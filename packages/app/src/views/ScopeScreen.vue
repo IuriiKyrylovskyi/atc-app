@@ -38,7 +38,7 @@ import {
   type VideoMap,
 } from '@atc-app/scope';
 import { buildScenario, findScenario, scenariosForPack } from '@atc-app/scenario';
-import { instruction, parseCommand, readback, unable, type CommandContext } from '@atc-app/voice';
+import { instruction, parseCommand, radioCallsign, readback, unable, type CommandContext } from '@atc-app/voice';
 import { loadPack } from '@/services/packLoader';
 import { SIM_RATES, SimSession, type SimRate } from '@/services/simSession';
 
@@ -69,6 +69,9 @@ let picture: TrafficPicture | null = null;
 let session: SimSession | null = null;
 let hits: TrafficHit[] = [];
 let fixIds = new Set<string>();
+/** `${airport}|${runway}` for runways with an ILS. */
+let ilsRunways = new Set<string>();
+const landedCount = ref(0);
 let loadedPack: AirspacePack | null = null;
 let blinkTimer: ReturnType<typeof setInterval> | null = null;
 const conflictCount = ref(0);
@@ -149,6 +152,13 @@ function onSnapshot(s: Snapshot): void {
     } else if (e.type === 'separation_restored') {
       const min = `min ${e.minLateralNm.toFixed(1)} NM / ${Math.round(e.minVerticalFt)} ft`;
       addLog('info', 'SEP', `${e.a} / ${e.b} restored after ${Math.round(e.durationS)} s, ${min}`, e.t);
+    } else if (e.type === 'localizer_captured') {
+      addLog('info', e.callsign, `established on the localizer ${e.runway}`, e.t);
+    } else if (e.type === 'landed') {
+      landedCount.value++;
+      addLog('info', e.callsign, `landed ${e.airport} ${e.runway}`, e.t);
+    } else if (e.type === 'missed_approach') {
+      addLog('unable', e.callsign, `Going around, ${radioCallsign(e.callsign).text} (${e.reason})`, e.t);
     }
   }
   picture.update(s);
@@ -175,6 +185,7 @@ const commandContext = (): CommandContext => ({
   callsigns: picture?.list().map((t) => t.callsign) ?? [],
   selected: traffic.selected,
   hasFix: (id) => fixIds.has(id),
+  hasIls: (airport, runway) => ilsRunways.has(`${airport}|${runway}`),
   aircraft: (cs) => picture?.get(cs)?.ac,
 });
 
@@ -439,12 +450,15 @@ const selectedInfo = computed(() => {
   const fl = (ft: number) => String(Math.round(ft / 100)).padStart(3, '0');
   const t = ac.target;
   const next = [t.directFix, ...t.route].filter(Boolean).slice(0, 4).join(' ');
+  const PHASE = { armed: 'CLEARED', localizer: 'LOC', glideslope: 'LOC GS' } as const;
+  const approach = t.approach ? `${t.approach.type} ${t.approach.runway} ${PHASE[t.approach.phase]}` : '';
+  const route = next ? `DCT ${next}` : t.headingTrue !== null ? 'VECTORS' : '';
   return {
     head: [ac.callsign, `${ac.icaoType}/${ac.wake}`, ac.destination, `SQ ${ac.squawk}`].filter(Boolean).join('  '),
     alt: `ALT ${fl(ac.altFt)}${t.altFt !== ac.altFt ? ` → ${fl(t.altFt)}` : ''}`,
     spd: `IAS ${Math.round(ac.casKt)}  GS ${Math.round(ac.gsKt)}  M${ac.mach.toFixed(2).slice(1)}`,
     hdg: `HDG ${String(magneticHeading(ac, magVar.value)).padStart(3, '0')}`,
-    nav: next ? `DCT ${next}` : t.headingTrue !== null ? 'VECTORS' : '',
+    nav: t.approach && t.approach.phase !== 'armed' ? approach : [route, approach].filter(Boolean).join(' · '),
   };
 });
 
@@ -473,6 +487,7 @@ function stopTraffic(): void {
   scenarioName.value = null;
   aircraftCount.value = 0;
   conflictCount.value = 0;
+  landedCount.value = 0;
   simTime.value = 0;
   log.value = [];
   select(null);
@@ -515,6 +530,7 @@ onMounted(async () => {
     const m = buildVideoMap(pack);
     map.value = m;
     fixIds = new Set(pack.fixes.map((f) => f.id));
+    ilsRunways = new Set(pack.runways.filter((r) => r.ils).map((r) => `${r.airport}|${r.id}`));
     magVar.value = pack.meta.magVar;
     fitCanvas();
     await startTraffic(pack, m);
@@ -643,6 +659,7 @@ onBeforeUnmount(() => {
       <span>RNG {{ rangeNm.toFixed(rangeNm < 10 ? 1 : 0) }} NM</span>
       <span v-if="scenarioName">ACFT {{ aircraftCount }}</span>
       <span v-if="conflictCount" class="alert-count">CA {{ conflictCount }}</span>
+      <span v-if="landedCount">LDG {{ landedCount }}</span>
       <span v-if="readout">{{ readout }}</span>
       <span class="dim">{{ frameMs.toFixed(1) }} ms</span>
     </div>

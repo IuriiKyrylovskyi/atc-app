@@ -18,7 +18,11 @@
  * | `DCT CAMRN`       | proceed direct CAMRN                       |
  * | `SQ4521`          | squawk 4521                                |
  * | `RON`             | resume own navigation                      |
+ * | `ILS 04R`         | cleared ILS runway 04R (destination field) |
+ * | `ILS KJFK 04R`    | … at another airport                       |
  *
+ * An approach clearance combines with a vector and a level in one message:
+ * `DAL1192 L220 A030 ILS 04R`.
  * Only the syntax and plain ranges are checked here; whether the aircraft can do
  * it (performance, ceiling) is the sim's call, answered by the pilot as "unable".
  * Spoken phraseology (Phase 2) produces the same `Message`.
@@ -32,15 +36,17 @@ export interface CommandContext {
   selected?: string | null;
   /** Fix lookup for `DCT`; omitted = any fix accepted. */
   hasFix?: (id: string) => boolean;
-  /** Current aircraft state, for climb / descend sanity checks. */
+  /** Current aircraft state, for climb / descend sanity checks and the destination. */
   aircraft?: (callsign: string) => AircraftState | undefined;
+  /** Whether the runway has an ILS; omitted = any runway accepted. */
+  hasIls?: (airport: string, runway: string) => boolean;
 }
 
 export type CommandResult =
   | { ok: true; message: Message }
   | { ok: false; error: string; callsign?: string };
 
-type Group = 'vertical' | 'lateral' | 'speed' | 'squawk';
+type Group = 'vertical' | 'lateral' | 'speed' | 'squawk' | 'approach';
 
 const GROUP: Record<Clearance['kind'], Group> = {
   altitude: 'vertical',
@@ -50,6 +56,7 @@ const GROUP: Record<Clearance['kind'], Group> = {
   resume_own_navigation: 'lateral',
   speed: 'speed',
   squawk: 'squawk',
+  approach: 'approach',
 };
 
 const MAX_ALT_FT = 60_000;
@@ -64,8 +71,15 @@ interface ItemParse {
 
 type ItemResult = ItemParse | { error: string } | null;
 
+/** Runway designator: "4R" → "04R", "13" → "13". */
+const RUNWAY = /^(\d{1,2})([LRC]?)$/;
+const normaliseRunway = (t: string) => {
+  const m = RUNWAY.exec(t)!;
+  return `${m[1]!.padStart(2, '0')}${m[2]}`;
+};
+
 /** One item at tokens[i]; null if the token is not an item at all. */
-function parseItem(tokens: readonly string[], i: number, ctx: CommandContext): ItemResult {
+function parseItem(tokens: readonly string[], i: number, ctx: CommandContext, callsign?: string): ItemResult {
   const t = tokens[i]!;
   let m: RegExpExecArray | null;
 
@@ -108,6 +122,26 @@ function parseItem(tokens: readonly string[], i: number, ctx: CommandContext): I
     return { clearance: { kind: 'squawk', code }, used: m[1] ? 1 : 2 };
   }
   if (t === 'RON') return { clearance: { kind: 'resume_own_navigation' }, used: 1 };
+  if (t === 'ILS') {
+    const a = tokens[i + 1];
+    const b = tokens[i + 2];
+    let airport: string | undefined;
+    let runway: string | undefined;
+    let used = 2;
+    if (a && /^[A-Z]{4}$/.test(a) && b && RUNWAY.test(b)) {
+      airport = a;
+      runway = normaliseRunway(b);
+      used = 3;
+    } else if (a && RUNWAY.test(a)) {
+      airport = callsign ? ctx.aircraft?.(callsign)?.destination : undefined;
+      runway = normaliseRunway(a);
+      if (!airport) return { error: 'No destination known: use ILS <airport> <runway>' };
+    } else {
+      return { error: 'ILS needs a runway, e.g. ILS 04R' };
+    }
+    if (ctx.hasIls && !ctx.hasIls(airport, runway)) return { error: `No ILS for ${airport} runway ${runway}` };
+    return { clearance: { kind: 'approach', type: 'ILS', airport, runway }, used };
+  }
   return null;
 
   function altitude(ft: number): ItemParse | { error: string } {
@@ -155,7 +189,7 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
   const used = new Set<Group>();
   const ac = ctx.aircraft?.(callsign);
   while (i < tokens.length) {
-    const r = parseItem(tokens, i, ctx);
+    const r = parseItem(tokens, i, ctx, callsign);
     if (!r) return { ok: false, error: `Unknown item ${tokens[i]}`, callsign };
     if ('error' in r) return { ok: false, error: r.error, callsign };
     const group = GROUP[r.clearance.kind];

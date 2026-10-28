@@ -6,6 +6,7 @@ export * from './atmo/isa';
 export * from './model/types';
 export * from './aircraft/performance';
 export * from './aircraft/dynamics';
+export * from './aircraft/approach';
 export * from './core/rng';
 export * from './safety/separation';
 export * from './core/simulation';

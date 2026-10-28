@@ -82,7 +82,9 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [ ] Flight model v1: climb/descent by type, accel/decel, 250 kt < FL100, wind triangle
 - [x] Text command syntax (`DAL123 FL120 H240 S220`) → `Message` + validation (`packages/voice` command.ts): FL/A/C/D, H/L/R, TL/TR, S/M, DCT, SQ, RON; callsign by unique ending or selection; climb/descend sanity check
 - [x] Scope command line: live phraseology preview, ↑/↓ history, comms log (instruction, readback, pilot "unable" from sim rejections); click a target to command it
-- [ ] Command line: Tab-complete callsigns / fixes, approach clearances (ILS, visual), "expedite", vertical rate
+- [x] ILS approach clearance (`ILS 04R`, `ILS KJFK 04R`, combined with a vector and level): localizer intercept with turn lead from either side, localizer tracking, glideslope from below, 180 kt then Vapp inside 5 NM, landing removes the aircraft, missed approach (too high / no glideslope) climbs runway heading to 3000; vectors / direct cancel the clearance
+- [ ] Command line: Tab-complete callsigns / fixes, visual approach, "expedite", vertical rate, "maintain … until established" phrasing
+- [ ] Approach realism: glideslope from above, real missed-approach procedures (IAP legs), runway occupancy / landing clearance, 2.5 NM on final, parallel approach rules (JFK 4L/4R, 13L/R)
 - [x] Separation monitor in the sim (3 NM / 1 000 ft terminal, configurable) + STCA: linear prediction with cleared-level cut-off, 120 s look-ahead, events (alert, lost, restored with min distance/duration, ended), conflicts in every snapshot
 - [x] Scope: red targets/data blocks with blinking "CA", pair line (dashed predicted / solid lost) with time-to-loss or distance label, CA count, CA/LOS/SEP lines in the comms log
 - [x] Conflict drill scenario over COL (head-on, crossing, 1 000 ft control pair) + scenario picker on the scope
