@@ -1,0 +1,33 @@
+name: 🧪 Android SDK Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: self-hosted
+    steps:
+      - name: Test Android SDK
+        run: |
+          echo "ANDROID_HOME: $ANDROID_HOME"
+          echo "PATH: $PATH"
+
+          # Try to find Android SDK
+          if [ -d "$HOME/Library/Android/sdk" ]; then
+            echo "✅ SDK directory exists"
+            ls -la $HOME/Library/Android/sdk
+          else
+            echo "❌ SDK directory not found"
+          fi
+
+          # Set it manually for this run
+          export ANDROID_HOME=$HOME/Library/Android/sdk
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin
+
+          # Test sdkmanager
+          if command -v sdkmanager &> /dev/null; then
+            echo "✅ sdkmanager found"
+            sdkmanager --version
+          else
+            echo "❌ sdkmanager not found"
+          fi

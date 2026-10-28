@@ -1,0 +1,20 @@
+# Ignore build artifacts
+node_modules
+dist
+release
+out
+coverage
+temp
+*.log
+
+# Monorepo package ignores
+packages/**/dist
+packages/**/release
+packages/**/node_modules
+
+# Common generated folders
+.idea
+.vscode
+
+# Don’t prettify lockfiles or pnpm metadata
+pnpm-lock.yaml

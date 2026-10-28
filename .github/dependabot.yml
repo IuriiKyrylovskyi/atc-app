@@ -1,0 +1,149 @@
+version: 2
+
+updates:
+  # ============================================================================
+  # Root Package - Quarterly Updates, All Grouped
+  # ============================================================================
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'monthly'
+      day: 'monday'
+      time: '09:00'
+    open-pull-requests-limit: 2 # Reduced from 5
+    groups:
+      # Group ALL dependencies together (production + development)
+      all-dependencies:
+        patterns:
+          - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
+    # Only create separate PRs for major version updates
+    ignore:
+      # Ignore specific packages if they're too noisy
+      - dependency-name: '@types/*'
+        update-types: ['version-update:semver-patch']
+    reviewers:
+      - 'IuriiKyrylovskyi'
+    labels:
+      - 'dependencies'
+      - 'automated'
+      - 'root'
+    commit-message:
+      prefix: 'chore(deps)'
+      include: 'scope'
+
+  # ============================================================================
+  # Web App - Quarterly Updates, Grouped by Type
+  # ============================================================================
+  - package-ecosystem: 'npm'
+    directory: '/packages/app'
+    schedule:
+      interval: 'monthly'
+      day: 'monday'
+      time: '10:00' # Stagger by 1 hour
+    open-pull-requests-limit: 2 # Reduced from 3
+    groups:
+      # Group all non-major updates
+      app-dependencies:
+        patterns:
+          - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
+    ignore:
+      # Ignore patch updates for type definitions
+      - dependency-name: '@types/*'
+        update-types: ['version-update:semver-patch']
+      # Ignore vue-tsc patch updates (often breaking)
+      - dependency-name: 'vue-tsc'
+        update-types: ['version-update:semver-patch']
+    labels:
+      - 'dependencies'
+      - 'app'
+    commit-message:
+      prefix: 'chore(app-deps)'
+
+  # ============================================================================
+  # Electron Package - Quarterly Updates
+  # ============================================================================
+  - package-ecosystem: 'npm'
+    directory: '/packages/electron'
+    schedule:
+      interval: 'monthly'
+      day: 'monday'
+      time: '11:00' # Stagger by 2 hours
+    open-pull-requests-limit: 2 # Reduced from 3
+    groups:
+      electron-dependencies:
+        patterns:
+          - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
+    ignore:
+      - dependency-name: '@types/*'
+        update-types: ['version-update:semver-patch']
+      # Be cautious with Electron updates
+      - dependency-name: 'electron'
+        update-types: ['version-update:semver-minor']
+      - dependency-name: 'electron-builder'
+        update-types: ['version-update:semver-minor']
+    labels:
+      - 'dependencies'
+      - 'electron'
+    commit-message:
+      prefix: 'chore(electron-deps)'
+
+  # ============================================================================
+  # Mobile Package - Quarterly Updates
+  # ============================================================================
+  - package-ecosystem: 'npm'
+    directory: '/packages/mobile'
+    schedule:
+      interval: 'monthly'
+      day: 'monday'
+      time: '12:00' # Stagger by 3 hours
+    open-pull-requests-limit: 2 # Reduced from 3
+    groups:
+      mobile-dependencies:
+        patterns:
+          - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
+    ignore:
+      - dependency-name: '@types/*'
+        update-types: ['version-update:semver-patch']
+      # Be cautious with Capacitor updates
+      - dependency-name: '@capacitor/*'
+        update-types: ['version-update:semver-minor']
+    labels:
+      - 'dependencies'
+      - 'mobile'
+    commit-message:
+      prefix: 'chore(mobile-deps)'
+
+  # ============================================================================
+  # GitHub Actions - Quarterly Updates Only
+  # ============================================================================
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'monthly' # Keep monthly but heavily grouped
+      day: 'monday'
+      time: '13:00'
+    open-pull-requests-limit: 1 # Only 1 PR for all actions
+    groups:
+      # Group ALL GitHub Actions together
+      github-actions:
+        patterns:
+          - '*'
+    labels:
+      - 'dependencies'
+      - 'ci'
+      - 'github-actions'
+    commit-message:
+      prefix: 'chore(ci)'
+      include: 'scope'

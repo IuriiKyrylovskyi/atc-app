@@ -1,0 +1,21 @@
+# Ignore node modules and build output
+node_modules
+dist
+build
+coverage
+.vscode
+.env
+*.config.js
+*.config.cjs
+*.config.ts
+packages/*/node_modules
+packages/*/dist
+packages/*/build
+
+# Ignore Capacitor native folders
+packages/mobile/android
+packages/mobile/ios
+
+# Ignore Electron binaries and output
+packages/electron/release
+packages/electron/out

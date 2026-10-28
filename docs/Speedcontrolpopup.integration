@@ -1,0 +1,158 @@
+// =============================================================================
+// SpeedControlPopup — Integration Guide
+// =============================================================================
+//
+// 1. MOUNT IN YOUR GAME VIEW (e.g. GameView.vue)
+// ─────────────────────────────────────────────────
+//
+// <template>
+//   <div class="game-wrapper">
+//     <div id="phaser-container" ref="phaserEl" />
+//
+//     <SpeedControlPopup
+//       :plane="selectedPlane"
+//       :visible="popupVisible"
+//       @close="popupVisible = false"
+//       @speed-change="onSpeedChange"
+//       @cancel-approach="onCancelApproach"
+//       @resume-approach="onResumeApproach"
+//     />
+//   </div>
+// </template>
+//
+// <script setup lang="ts">
+// import { ref, onMounted, onUnmounted } from 'vue'
+// import SpeedControlPopup, { type PopupPlaneData } from '@/components/SpeedControlPopup.vue'
+// import { gameEventBus } from '@/services/EventBus'
+//
+// const selectedPlane = ref<PopupPlaneData | null>(null)
+// const popupVisible  = ref(false)
+//
+// // ── Listen for Phaser → Vue plane-tap events ─────────────────────────────
+// function onPlaneTapped(data: PopupPlaneData) {
+//   selectedPlane.value = data
+//   popupVisible.value  = true
+// }
+//
+// // ── Emit speed change back to Phaser ─────────────────────────────────────
+// function onSpeedChange(planeId: number, speed: number) {
+//   gameEventBus.emit('plane:setSpeed', { planeId, speed })
+// }
+//
+// function onCancelApproach(planeId: number) {
+//   gameEventBus.emit('plane:cancelApproach', { planeId })
+// }
+//
+// function onResumeApproach(planeId: number) {
+//   gameEventBus.emit('plane:resumeApproach', { planeId })
+// }
+//
+// onMounted(()  => gameEventBus.on('plane:tapped', onPlaneTapped))
+// onUnmounted(() => gameEventBus.off('plane:tapped', onPlaneTapped))
+// </script>
+//
+// =============================================================================
+// 2. EMIT FROM Plane.ts — when a plane icon is tapped
+// =============================================================================
+//
+// In Plane.ts, inside your pointerdown / tap handler (wherever you currently
+// detect a tap on the plane icon):
+//
+//   import { gameEventBus } from '@/services/EventBus'
+//   import type { PopupPlaneData } from '@/components/SpeedControlPopup.vue'
+//   import { getPlaneTypeById } from '@/game/config/planes.config'
+//
+//   // Inside the pointerdown callback:
+//   const typeConfig = getPlaneTypeById(this.planeType)
+//
+//   // Convert internal speed (world-units/frame) → knots for display.
+//   // Adjust the scale factor to match your game's speed unit convention.
+//   const SPEED_TO_KNOTS = 500   // tune: baseSpeed 0.4 → 200 kt
+//
+//   const popupData: PopupPlaneData = {
+//     id:           this.id,
+//     callsign:     this.callsign ?? `FLT ${String(this.id).slice(-4)}`,
+//     aircraftType: typeConfig?.name ?? 'Unknown',
+//     weightClass:  typeConfig?.weightClass ?? 'medium',
+//     currentSpeed: Math.round(this.currentSpeed * SPEED_TO_KNOTS),
+//     minSpeed:     Math.round((typeConfig?.speed ?? 0.4) * 0.7 * SPEED_TO_KNOTS),
+//     maxSpeed:     Math.round((typeConfig?.speed ?? 0.4) * 1.4 * SPEED_TO_KNOTS),
+//     isApproaching: this.isApproachingLanding,
+//   }
+//
+//   gameEventBus.emit('plane:tapped', popupData)
+//
+// =============================================================================
+// 3. HANDLE IN GameScene.ts — react to popup speed commands
+// =============================================================================
+//
+// In GameScene.ts, inside create() or setupSettingsListeners():
+//
+//   private _onSetSpeed!:        (data: { planeId: number; speed: number }) => void
+//   private _onCancelApproach!:  (data: { planeId: number }) => void
+//   private _onResumeApproach!:  (data: { planeId: number }) => void
+//
+//   // In create():
+//   this._onSetSpeed = ({ planeId, speed }) => {
+//     const plane = this.planes.find(p => p.id === planeId)
+//     if (!plane) return
+//     const KNOTS_TO_SPEED = 1 / 500   // inverse of SPEED_TO_KNOTS above
+//     plane.setTargetSpeed(speed * KNOTS_TO_SPEED)
+//   }
+//
+//   this._onCancelApproach = ({ planeId }) => {
+//     const plane = this.planes.find(p => p.id === planeId)
+//     if (!plane) return
+//     plane.isApproachingLanding = false
+//     plane.isApproachingWaypoint = false
+//     plane.path = null
+//   }
+//
+//   this._onResumeApproach = ({ planeId }) => {
+//     // Re-snap to nearest runway approach path — implement per your PathProcessor
+//   }
+//
+//   gameEventBus.on('plane:setSpeed',       this._onSetSpeed)
+//   gameEventBus.on('plane:cancelApproach', this._onCancelApproach)
+//   gameEventBus.on('plane:resumeApproach', this._onResumeApproach)
+//
+//   // In shutdown() — MUST remove all three to avoid ghost listeners:
+//   gameEventBus.off('plane:setSpeed',       this._onSetSpeed)
+//   gameEventBus.off('plane:cancelApproach', this._onCancelApproach)
+//   gameEventBus.off('plane:resumeApproach', this._onResumeApproach)
+//
+// =============================================================================
+// 4. ADD setTargetSpeed() to Plane.ts
+// =============================================================================
+//
+//   /** Smoothly ramp speed toward target over ~2 s (lerped in update()). */
+//   private _targetSpeed: number | null = null
+//
+//   setTargetSpeed(speed: number): void {
+//     this._targetSpeed = speed
+//   }
+//
+//   // In Plane.update() — add after the existing speed/path block:
+//   if (this._targetSpeed !== null) {
+//     this.currentSpeed = Phaser.Math.Linear(this.currentSpeed, this._targetSpeed, 0.02)
+//     if (Math.abs(this.currentSpeed - this._targetSpeed) < 0.001) {
+//       this.currentSpeed  = this._targetSpeed
+//       this._targetSpeed  = null
+//     }
+//   }
+//
+// =============================================================================
+// 5. EVENTBUS EVENTS SUMMARY
+// =============================================================================
+//
+//  Phaser → Vue
+//   'plane:tapped'          { PopupPlaneData }     open popup for this plane
+//
+//  Vue → Phaser  (also emitted internally by SpeedControlPopup)
+//   'plane:setSpeed'        { planeId, speed }     set target speed (knots)
+//   'plane:cancelApproach'  { planeId }            cancel current approach/route
+//   'plane:resumeApproach'  { planeId }            restore approach path
+//
+// =============================================================================
+
+export {}

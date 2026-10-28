@@ -1,0 +1,170 @@
+name: 🧩 CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # ============================================================================
+  # 🔍 Code Quality Checks (Fast Feedback)
+  # ============================================================================
+  quality:
+    name: 🔍 Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⬇️ Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup PNPM
+        uses: pnpm/action-setup@v4
+
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: 📥 Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🎨 Prettier Check
+        run: pnpm format:check
+
+      - name: 🧹 ESLint
+        run: pnpm lint
+
+      - name: 🔎 TypeScript Check
+        run: pnpm exec tsc -b --noEmit
+
+      - name: ✅ Environment Verification
+        run: pnpm verify:env
+
+  # ============================================================================
+  # 🏗️ Build Web App (Required for all platforms)
+  # ============================================================================
+  build-web:
+    name: 🌐 Build Web App
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @atc-app/app build
+
+      - name: 📤 Upload Web Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: packages/app/dist
+          retention-days: 1
+
+  # ============================================================================
+  # 🖥️ Build Electron (Quick Validation)
+  # ============================================================================
+  build-electron:
+    name: 🖥️ Build Electron
+    runs-on: ubuntu-latest
+    needs: build-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 📥 Download Web Build
+        uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: packages/app/dist
+
+      - run: pnpm --filter @atc-app/electron build
+
+      - name: 📤 Upload Electron Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-build
+          path: packages/electron/dist
+          retention-days: 1
+
+  # ============================================================================
+  # 📱 Validate Mobile (Capacitor Sync Only)
+  # ============================================================================
+  validate-mobile:
+    name: 📱 Validate Mobile
+    runs-on: ubuntu-latest
+    needs: build-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 📥 Download Web Build
+        uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: packages/app/dist
+
+      - name: 🔄 Capacitor Sync
+        run: pnpm --filter @atc-app/mobile exec cap sync
+
+      - name: ✅ Verify Android Assets
+        run: test -f packages/mobile/android/app/src/main/assets/capacitor.config.json
+
+      - name: ✅ Verify iOS Assets
+        run: test -f packages/mobile/ios/App/App/capacitor.config.json
+
+  # ============================================================================
+  # 📊 CI Summary
+  # ============================================================================
+  ci-success:
+    name: ✅ CI Summary
+    runs-on: ubuntu-latest
+    needs: [quality, build-electron, validate-mobile]
+    if: always()
+    steps:
+      - name: 📊 Check Job Status
+        run: |
+          if [[ "${{ needs.quality.result }}" != "success" ]] || \
+             [[ "${{ needs.build-electron.result }}" != "success" ]] || \
+             [[ "${{ needs.validate-mobile.result }}" != "success" ]]; then
+            echo "❌ CI Pipeline Failed"
+            exit 1
+          fi
+
+      - name: 📝 Generate Summary
+        run: |
+          echo "### ✅ CI Pipeline Success" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🎨 Code Quality | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🌐 Web Build | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🖥️ Electron | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📱 Mobile Sync | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🎉 All checks passed! Ready to merge." >> $GITHUB_STEP_SUMMARY

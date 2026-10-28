@@ -1,0 +1,34 @@
+{
+  "name": "@atc-app/mobile",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @atc-app/app dev",
+    "build": "pnpm --filter @atc-app/app build && pnpm exec cap sync",
+    "sync": "pnpm exec cap sync",
+    "open:android": "pnpm exec cap open android",
+    "open:ios": "pnpm exec cap open ios",
+    "assets:generate": "capacitor-assets generate"
+  },
+  "dependencies": {
+    "@capacitor-community/admob": "7.2.0",
+    "@capacitor/android": "7.4.4",
+    "@capacitor/app": "7.1.0",
+    "@capacitor/core": "7.4.4",
+    "@capacitor/filesystem": "7.1.8",
+    "@capacitor/haptics": "7.0.5",
+    "@capacitor/ios": "7.4.4",
+    "@capacitor/network": "7.0.4",
+    "@capacitor/screen-orientation": "7.0.4",
+    "@capacitor/status-bar": "7.0.6",
+    "@revenuecat/purchases-capacitor": "11.3.2",
+    "vue": "^3.4.21"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "7.4.4",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.0"
+  }
+}

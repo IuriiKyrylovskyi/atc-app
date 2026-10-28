@@ -1,0 +1,61 @@
+name: 🔖 Version Bump
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: 'patch'
+
+permissions:
+  contents: write
+
+jobs:
+  bump-version:
+    name: 🔖 Bump Version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: 📥 Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🔧 Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 🔖 Bump Version
+        run: |
+          pnpm exec standard-version --release-as ${{ github.event.inputs.bump_type }}
+
+      - name: 📤 Push Changes
+        run: |
+          git push --follow-tags origin main
+
+      - name: 📊 Summary
+        run: |
+          NEW_VERSION=$(git describe --tags --abbrev=0)
+          echo "### 🔖 Version Bumped Successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **New Version**: $NEW_VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "- **Bump Type**: ${{ github.event.inputs.bump_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Changes pushed to main branch" >> $GITHUB_STEP_SUMMARY
+          echo "🚀 Release workflow will trigger automatically" >> $GITHUB_STEP_SUMMARY

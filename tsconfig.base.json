@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2020", "DOM"],
+    "jsx": "preserve",
+    "strict": true,
+    "sourceMap": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["packages/app/src/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist"],
+  "files": [],
+  "references": [
+    { "path": "packages/app" },
+    { "path": "packages/electron" },
+    { "path": "packages/mobile" }
+  ]
+}

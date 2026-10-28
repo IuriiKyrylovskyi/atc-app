@@ -1,0 +1,12 @@
+{
+  "version": "0.0.0",
+  "minVersion": "0.0.0",
+  "releaseNotes": "Version 0.0.0 - Bug fixes and improvements",
+  "url": "https://github.com/IuriiKyrylovskyi/atc-app/releases/tag/v0.0.0",
+  "platforms": {
+    "electron": "https://github.com/IuriiKyrylovskyi/atc-app/releases/download/v0.0.0/ATC-APP-0.0.0-mac.dmg",
+    "ios": "https://apps.apple.com/app/idYOUR_APP_STORE_ID",
+    "android": "https://play.google.com/store/apps/details?id=com.atcapp.app"
+  },
+  "updatedAt": "2026-10-28T01:21:19.541Z"
+}

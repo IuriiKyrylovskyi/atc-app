@@ -1,0 +1,132 @@
+# Node & PNPM
+node_modules/
+.pnpm-store/
+dist/
+build/
+*.log
+*.lock
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# paddle
+.paddle_api_key
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor settings
+.idea/
+*.swp
+.kilo/
+
+# TypeScript
+*.tsbuildinfo
+
+# ---------------------------------------------------------------------
+# keystore Android
+# ---------------------------------------------------------------------
+keystore.base64
+*.keystore
+release.keystore
+packages/mobile/android/app/*.keystore
+packages/mobile/android/keystore.properties
+# ---------------------------------------------------------------------
+# App (Vue + Vite)
+# ---------------------------------------------------------------------
+packages/app/dist/
+packages/app/node_modules/
+
+# ---------------------------------------------------------------------
+# Electron
+# ---------------------------------------------------------------------
+packages/electron/dist/
+packages/electron/app-dist/
+packages/electron/node_modules/
+packages/electron/app-build/*
+!packages/electron/app-build/icon.png
+!packages/electron/app-build/icon.ico
+!packages/electron/app-build/icon.icns
+!packages/electron/app-build/entitlements.mac.plist
+packages/electron/release/
+
+
+
+# ---------------------------------------------------------------------
+# Capacitor Mobile (Android + iOS)
+# ---------------------------------------------------------------------
+packages/mobile/node_modules/
+packages/mobile/www/
+packages/mobile/android/.gradle/
+packages/mobile/android/.idea/
+packages/mobile/android/local.properties
+packages/mobile/android/build/
+packages/mobile/android/app/build/
+packages/mobile/ios/build/
+packages/mobile/ios/DerivedData/
+packages/mobile/ios/App.xcworkspace/xcuserdata/
+packages/mobile/ios/App/App.xcuserdata/
+
+# ---------------------------------------------------------------------
+# Sensitive files
+# ---------------------------------------------------------------------
+# Never commit your signing keys or local config
+*.keystore
+*.jks
+*.pem
+*.p12
+*.key
+*.crt
+*.cer
+*.mobileprovision
+*.xcuserstate
+
+# Android Keystores (NEVER commit these!)
+*.keystore
+*.jks
+*.p12
+*.pfx
+*-keystore-base64.txt
+*keystore.base64.txt
+*.keystore.base64
+*.jks.base64
+
+# Android signing properties
+keystore.properties
+
+# macOS Certificates
+*.cer
+*.certSigningRequest
+*.p12
+*.mobileprovision
+SubscriptionKey_WYY65L7M29.p8
+AuthKey_QZ3TD9B7W3.p8
+
+# paid levels
+levels_full.json
+
+# ---------------------------------------------------------------------
+# GitHub Actions
+# ---------------------------------------------------------------------
+# (We DO want to keep our workflow files)
+!.github/
+!/.github/workflows/
+
+# ---------------------------------------------------------------------
+# VS Code
+# ---------------------------------------------------------------------
+.vscode/*
+!.vscode/settings.json
+
+# ---------------------------------------------------------------------
+# assets
+# ---------------------------------------------------------------------
+
+dist_remote_assets/
+raw_assets/
+packages/app/src/assets/backgrounds/
+packages/app/src/assets/plane-sprites/
+screenshots/

@@ -1,0 +1,61 @@
+{
+  // ----------------------------------------------------------
+  // ATC-APP Workspace Settings
+  // ----------------------------------------------------------
+
+  // ✨ Formatting
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+
+  // 🧹 Whitespace & line endings
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+
+  // 📦 Tabs & indentation (keeps in sync with .editorconfig)
+  "editor.tabSize": 2,
+  "editor.detectIndentation": false,
+  "editor.renderWhitespace": "boundary",
+
+  // 🧠 TypeScript & JavaScript validation
+  "javascript.validate.enable": false,
+  "typescript.validate.enable": false,
+
+  // 🚦 ESLint integration
+  "eslint.enable": true,
+  "eslint.alwaysShowStatus": true,
+  "eslint.format.enable": true,
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact",
+    "vue"
+  ],
+
+  // 💅 Prettier integration
+  "prettier.requireConfig": true,
+  "prettier.useEditorConfig": true,
+  "prettier.trailingComma": "es5",
+  "prettier.singleQuote": true,
+  "prettier.semi": true,
+  "prettier.printWidth": 100,
+
+  // 🔍 Vue / Vite / TypeScript
+  "volar.takeOverMode.enabled": true,
+  "typescript.tsdk": "node_modules/typescript/lib",
+
+  // 🧰 Explorer & file handling
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/build": true,
+    "**/.DS_Store": true,
+    "**/.pnpm-store": true
+  },
+
+  // 🧩 Terminal defaults
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "terminal.integrated.defaultProfile.osx": "zsh"
+}

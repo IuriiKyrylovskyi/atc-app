@@ -1,0 +1,80 @@
+name: 🧪 Runner Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-runner:
+    name: 🧪 Test Self-Hosted Runner
+    runs-on: self-hosted
+    steps:
+      - name: 👋 Hello from Runner
+        run: |
+          echo "🎉 Runner is working!"
+          echo "📍 Running on: $(hostname)"
+          echo "💻 System: $(uname -a)"
+          echo "🏠 Home: $HOME"
+          echo "📁 Current directory: $(pwd)"
+
+      - name: 🖥️ System Information
+        run: |
+          echo "### 🖥️ System Info" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Hostname**: $(hostname)" >> $GITHUB_STEP_SUMMARY
+          echo "- **macOS Version**: $(sw_vers -productVersion)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Architecture**: $(uname -m)" >> $GITHUB_STEP_SUMMARY
+          echo "- **User**: $(whoami)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Runner is operational!**" >> $GITHUB_STEP_SUMMARY
+
+      - name: 🔍 Check Installed Tools
+        run: |
+          echo "### 🔍 Available Tools" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check Node
+          if command -v node &> /dev/null; then
+            echo "- ✅ Node.js: $(node --version)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ❌ Node.js: Not installed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check PNPM
+          if command -v pnpm &> /dev/null; then
+            echo "- ✅ PNPM: $(pnpm --version)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ❌ PNPM: Not installed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check Java
+          if command -v java &> /dev/null; then
+            echo "- ✅ Java: $(java -version 2>&1 | head -n 1)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ❌ Java: Not installed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check Xcode
+          if command -v xcodebuild &> /dev/null; then
+            echo "- ✅ Xcode: $(xcodebuild -version | head -n 1)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ❌ Xcode: Not installed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check CocoaPods
+          if command -v pod &> /dev/null; then
+            echo "- ✅ CocoaPods: $(pod --version)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ❌ CocoaPods: Not installed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check Android SDK
+          if [ -d "$ANDROID_HOME" ]; then
+            echo "- ✅ Android SDK: $ANDROID_HOME" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ❌ Android SDK: Not configured" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: ✅ Test Complete
+        run: |
+          echo "🎉 Runner test completed successfully!"
+          echo "Your self-hosted runner is ready to build apps!"
