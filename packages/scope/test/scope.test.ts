@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { destination, M_PER_NM, type AirspacePack } from '@atc-app/sim';
-import { buildVideoMap, DECLUTTER, ScopeRenderer, ScopeView, type Ctx2D } from '../src';
+import { destination, M_PER_NM, type AircraftState, type AirspacePack, type Snapshot } from '@atc-app/sim';
+import {
+  buildVideoMap,
+  dataBlockLines,
+  DECLUTTER,
+  DEFAULT_TRAFFIC_OPTIONS,
+  hitTest,
+  leaderVector,
+  ScopeRenderer,
+  ScopeView,
+  TrafficPicture,
+  type Ctx2D,
+} from '../src';
 
 const REF = { lat: 40.64, lon: -73.78 };
 
@@ -101,19 +112,20 @@ describe('video map', () => {
   });
 });
 
+function fakeCtx(): Ctx2D & { texts: string[] } {
+  const texts: string[] = [];
+  const noop = () => undefined;
+  return {
+    texts,
+    setTransform: noop, fillRect: noop, beginPath: noop, moveTo: noop, lineTo: noop, stroke: noop,
+    fill: noop, arc: noop, closePath: noop, setLineDash: noop, save: noop, restore: noop,
+    fillText: (t: string) => void texts.push(t),
+    measureText: (t: string) => ({ width: t.length * 7 }) as TextMetrics,
+    fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textBaseline: 'middle', textAlign: 'left',
+  } as unknown as Ctx2D & { texts: string[] };
+}
+
 describe('renderer declutter', () => {
-  function fakeCtx(): Ctx2D & { texts: string[] } {
-    const texts: string[] = [];
-    const noop = () => undefined;
-    return {
-      texts,
-      setTransform: noop, fillRect: noop, beginPath: noop, moveTo: noop, lineTo: noop, stroke: noop,
-      fill: noop, arc: noop, closePath: noop, setLineDash: noop, save: noop, restore: noop,
-      fillText: (t: string) => void texts.push(t),
-      measureText: (t: string) => ({ width: t.length * 7 }) as TextMetrics,
-      fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textBaseline: 'middle', textAlign: 'left',
-    } as unknown as Ctx2D & { texts: string[] };
-  }
   const map = buildVideoMap(pack);
 
   it('labels everything at short range', () => {
@@ -147,5 +159,70 @@ describe('renderer declutter', () => {
     new ScopeRenderer(ctx).draw(new ScopeView({ widthPx: 1000, heightPx: 800, rangeNm: 10 }), buildVideoMap(crowded));
     const fixLabels = ctx.texts.filter((t) => t.startsWith('F'));
     expect(fixLabels.length).toBe(1);
+  });
+});
+
+describe('traffic', () => {
+  const map = buildVideoMap(pack);
+  const aircraft = (over: Partial<AircraftState> = {}): AircraftState => ({
+    callsign: 'DAL1192', icaoType: 'B739', wake: 'M', squawk: '2101', origin: 'scenario',
+    pos: destination(REF, 0, 10 * M_PER_NM), altFt: 16_040, headingTrue: 180, trackTrue: 180,
+    casKt: 290, tasKt: 370, gsKt: 287, mach: 0.6, vsFpm: -2000, destination: 'KJFK',
+    target: { altFt: 11_000, headingTrue: null, turn: null, casKt: 290, mach: null, vsFpm: null, directFix: 'X', route: [] },
+    ...over,
+  });
+  const snap = (t: number, list: AircraftState[]): Snapshot => ({ t, aircraft: list, events: [] });
+
+  it('formats the full data block', () => {
+    expect(dataBlockLines(aircraft())).toEqual(['DAL1192', '160↓110 29', 'B739 KJFK']);
+    const level = aircraft({ altFt: 11_000, vsFpm: 0, gsKt: 250 });
+    expect(dataBlockLines(level)[1]).toBe('110  25');
+    const climbing = aircraft({
+      altFt: 5000, vsFpm: 1500, gsKt: 95, destination: undefined,
+      target: { ...aircraft().target, altFt: 7000 },
+    });
+    expect(dataBlockLines(climbing)).toEqual(['DAL1192', '050↑070 10', 'B739']);
+  });
+
+  it('places leader positions like a numpad', () => {
+    expect(leaderVector(8)).toEqual({ dx: 0, dy: -1 });
+    expect(leaderVector(2)).toEqual({ dx: 0, dy: 1 });
+    expect(leaderVector(6)).toEqual({ dx: 1, dy: 0 });
+    const ne = leaderVector(9);
+    expect(ne.dx).toBeCloseTo(Math.SQRT1_2, 9);
+    expect(ne.dy).toBeCloseTo(-Math.SQRT1_2, 9);
+  });
+
+  it('keeps history per sweep, capped, and drops aircraft that leave', () => {
+    const pic = new TrafficPicture(map.projection, 3);
+    for (let i = 0; i < 5; i++) {
+      pic.update(snap(i * 4.8, [aircraft({ pos: destination(REF, 0, (10 - i) * M_PER_NM) })]));
+    }
+    const t = pic.get('DAL1192')!;
+    expect(t.history).toHaveLength(3);
+    // Newest first: the previous sweep was 7 NM north.
+    expect(t.history[0]!.y / M_PER_NM).toBeCloseTo(7, 1);
+    expect(t.xy.y / M_PER_NM).toBeCloseTo(6, 1);
+    pic.update(snap(30, [aircraft({ callsign: 'UAL1' })]));
+    expect(pic.list().map((x) => x.callsign)).toEqual(['UAL1']);
+    expect(pic.t).toBe(30);
+  });
+
+  it('draws data blocks, and hit-tests targets and blocks', () => {
+    const pic = new TrafficPicture(map.projection);
+    pic.update(snap(0, [aircraft(), aircraft({ callsign: 'FAR1', pos: destination(REF, 90, 200 * M_PER_NM) })]));
+    const view = new ScopeView({ widthPx: 1000, heightPx: 800, rangeNm: 20 });
+    const ctx = fakeCtx();
+    const res = new ScopeRenderer(ctx).drawTraffic(view, pic.list(), { ...DEFAULT_TRAFFIC_OPTIONS, selected: 'DAL1192' });
+    expect(res.drawn).toBe(1); // FAR1 is off screen
+    expect(ctx.texts).toEqual(['DAL1192', '160↓110 29', 'B739 KJFK']);
+    const target = view.toScreen(pic.get('DAL1192')!.xy);
+    expect(hitTest(res.hits, target)).toBe('DAL1192');
+    // Default leader 9: the block sits up and to the right.
+    expect(hitTest(res.hits, { x: target.x + 30, y: target.y - 25 })).toBe('DAL1192');
+    expect(hitTest(res.hits, { x: target.x - 40, y: target.y + 40 })).toBeNull();
+    pic.setLeader('DAL1192', 1);
+    const moved = new ScopeRenderer(fakeCtx()).drawTraffic(view, pic.list(), DEFAULT_TRAFFIC_OPTIONS);
+    expect(hitTest(moved.hits, { x: target.x - 40, y: target.y + 25 })).toBe('DAL1192');
   });
 });

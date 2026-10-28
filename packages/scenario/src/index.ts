@@ -11,5 +11,9 @@
  *   Why better: accepts any wording, not only the grammar.
  *   Price: per-token API pricing; small per request. The spec is always shown back
  *   as an editable form, so the free grammar path stays the default.
+ *
+ * Today: STAR arrival routes and hand-written scripted scenarios (library/).
  */
-export {};
+export * from './star';
+export * from './script';
+export * from './library';

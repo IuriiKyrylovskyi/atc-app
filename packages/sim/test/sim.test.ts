@@ -194,3 +194,87 @@ describe('bridge', () => {
     client.dispose();
   });
 });
+
+describe('routes and scheduled traffic', () => {
+  const at = (brg: number, nm: number) => destination(ORIGIN, brg, nm * 1852);
+  const routePack: AirspacePack = {
+    ...pack,
+    fixes: [
+      { id: 'AAA', kind: 'waypoint', pos: at(0, 10) },
+      { id: 'BBB', kind: 'waypoint', pos: at(30, 20) },
+      { id: 'CCC', kind: 'waypoint', pos: at(60, 25) },
+    ],
+  };
+  const cfg: SimConfig = { seed: 7, pack: routePack, pilotDelayS: [0, 0] };
+  const spawn = (sim: Simulation) =>
+    sim.addAircraft({
+      callsign: 'ARR1',
+      icaoType: 'A320',
+      pos: ORIGIN,
+      altFt: 12_000,
+      headingTrue: 0,
+      casKt: 250,
+      route: ['AAA', 'BBB', 'CCC'],
+      clearedAltFt: 8_000,
+      destination: 'KTST',
+    });
+  const fixesReached = (sim: Simulation) =>
+    sim.eventLog.flatMap((e) => (e.type === 'fix_reached' ? [e.fix] : []));
+
+  it('flies the route fix by fix, descends to the cleared altitude, then holds heading', () => {
+    const sim = new Simulation(cfg);
+    spawn(sim);
+    expect(sim.getAircraft('ARR1')!.destination).toBe('KTST');
+    sim.advance(900);
+    expect(fixesReached(sim)).toEqual(['AAA', 'BBB', 'CCC']);
+    expect(sim.eventLog.some((e) => e.type === 'route_ended' && e.fix === 'CCC')).toBe(true);
+    const ac = sim.getAircraft('ARR1')!;
+    expect(ac.altFt).toBe(8_000);
+    expect(ac.target.directFix).toBeNull();
+    expect(ac.target.headingTrue).not.toBeNull();
+  });
+
+  it('rejects a route with fixes the pack does not have', () => {
+    const sim = new Simulation(cfg);
+    expect(() =>
+      sim.addAircraft({ callsign: 'X', icaoType: 'A320', pos: ORIGIN, altFt: 0, headingTrue: 0, casKt: 200, route: ['ZZZ'] })
+    ).toThrow(/unknown route fix ZZZ/);
+  });
+
+  it('keeps the route under vectors and resumes it', () => {
+    const sim = new Simulation(cfg);
+    spawn(sim);
+    sim.issue({ to: 'ARR1', clearances: [{ kind: 'heading', headingMag: 270 }] });
+    sim.advance(60);
+    let ac = sim.getAircraft('ARR1')!;
+    expect(ac.target.directFix).toBeNull();
+    expect(ac.target.route).toEqual(['AAA', 'BBB', 'CCC']);
+    sim.issue({ to: 'ARR1', clearances: [{ kind: 'resume_own_navigation' }] });
+    sim.advance(1);
+    ac = sim.getAircraft('ARR1')!;
+    expect(ac.target.directFix).toBe('AAA');
+    expect(ac.target.route).toEqual(['BBB', 'CCC']);
+  });
+
+  it('direct to a later route fix shortcuts the route; resume while on it is rejected', () => {
+    const sim = new Simulation(cfg);
+    spawn(sim);
+    sim.issue({ to: 'ARR1', clearances: [{ kind: 'direct', fix: 'BBB' }] });
+    sim.advance(1);
+    expect(sim.getAircraft('ARR1')!.target.route).toEqual(['CCC']);
+    sim.issue({ to: 'ARR1', clearances: [{ kind: 'resume_own_navigation' }] });
+    sim.advance(1);
+    expect(sim.eventLog.some((e) => e.type === 'clearance_rejected' && e.reason === 'already on own navigation')).toBe(true);
+  });
+
+  it('spawns scheduled aircraft on time, and the schedule survives save/restore', () => {
+    const sim = new Simulation(cfg);
+    sim.schedule(30, { callsign: 'LATE1', icaoType: 'B738', pos: ORIGIN, altFt: 5000, headingTrue: 90, casKt: 220 });
+    sim.advance(29.5);
+    expect(sim.getAircraft('LATE1')).toBeUndefined();
+    const restored = Simulation.restore(cfg, sim.saveState());
+    restored.advance(0.5);
+    expect(restored.getAircraft('LATE1')).toBeDefined();
+    expect(restored.eventLog.find((e) => e.type === 'aircraft_added')!.t).toBe(30);
+  });
+});
