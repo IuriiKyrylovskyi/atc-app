@@ -3,7 +3,9 @@
  * Radar scope: draws an airspace pack's video map — airways, fixes, navaids,
  * runways, ILS extended centrelines, range rings — and the traffic of a scripted
  * scenario run by the sim in a Web Worker: targets, history dots, speed vectors
- * and full data blocks, updated once per radar sweep. Commands come next.
+ * and full data blocks, updated once per radar sweep. Typed commands
+ * (`DAL1192 D080 H240`, see @atc-app/voice command.ts) go to the sim; the comms
+ * log shows the instruction, the pilot's readback and any "unable".
  *
  * `?scenario=<id>` picks a scenario (default: the first one for the pack),
  * `?scenario=none` shows the map only.
@@ -28,6 +30,7 @@ import {
   type VideoMap,
 } from '@atc-app/scope';
 import { buildScenario, findScenario, scenariosForPack } from '@atc-app/scenario';
+import { instruction, parseCommand, readback, unable, type CommandContext } from '@atc-app/voice';
 import { loadPack } from '@/services/packLoader';
 import { SIM_RATES, SimSession, type SimRate } from '@/services/simSession';
 
@@ -57,6 +60,24 @@ const VECTOR_MINUTES = [0, 1, 2, 4] as const;
 let picture: TrafficPicture | null = null;
 let session: SimSession | null = null;
 let hits: TrafficHit[] = [];
+let fixIds = new Set<string>();
+
+// ── Command line + comms log ───────────────────────────────────────────────
+interface LogLine {
+  id: number;
+  t: number;
+  kind: 'atc' | 'pilot' | 'unable' | 'error';
+  who: string;
+  text: string;
+}
+const commandInput = ref<HTMLInputElement | null>(null);
+const commandText = ref('');
+const commandError = ref<string | null>(null);
+const log = ref<LogLine[]>([]);
+const LOG_LINES = 6;
+const history: string[] = [];
+let historyIndex = -1;
+let logId = 0;
 
 const view = new ScopeView({ rangeNm: 40 });
 let renderer: ScopeRenderer | null = null;
@@ -105,6 +126,10 @@ function fitCanvas(): void {
 // ── Sim session ────────────────────────────────────────────────────────────
 function onSnapshot(s: Snapshot): void {
   if (!picture) return;
+  for (const e of s.events) {
+    if (e.type === 'clearance_rejected') addLog('unable', e.callsign, unable(e.callsign, e.reason).text, e.t);
+    else if (e.type === 'message_rejected') addLog('error', e.message.to, e.reason, e.t);
+  }
   picture.update(s);
   simTime.value = s.t;
   aircraftCount.value = picture.size;
@@ -118,6 +143,88 @@ function select(callsign: string | null): void {
   selectedAc.value = callsign ? picture?.get(callsign)?.ac ?? null : null;
   requestDraw();
 }
+
+// ── Commands ───────────────────────────────────────────────────────────────
+function addLog(kind: LogLine['kind'], who: string, text: string, t = simTime.value): void {
+  log.value = [...log.value, { id: ++logId, t, kind, who, text }].slice(-LOG_LINES);
+}
+
+const commandContext = (): CommandContext => ({
+  callsigns: picture?.list().map((t) => t.callsign) ?? [],
+  selected: traffic.selected,
+  hasFix: (id) => fixIds.has(id),
+  aircraft: (cs) => picture?.get(cs)?.ac,
+});
+
+/** Live interpretation of what is being typed. */
+const commandPreview = computed(() => {
+  if (!commandText.value.trim() || !picture) return null;
+  // Re-evaluate when the traffic or the selection changes.
+  void simTime.value;
+  void selectedAc.value;
+  const r = parseCommand(commandText.value, commandContext());
+  if (!r.ok) return { ok: false, text: r.error };
+  return { ok: true, text: instruction(r.message, picture.get(r.message.to)?.ac).text };
+});
+
+async function submitCommand(): Promise<void> {
+  const input = commandText.value.trim();
+  if (!input || !session || !picture) return;
+  const r = parseCommand(input, commandContext());
+  if (!r.ok) {
+    commandError.value = r.error;
+    return;
+  }
+  const ac = picture.get(r.message.to)?.ac;
+  history.unshift(input);
+  historyIndex = -1;
+  commandText.value = '';
+  commandError.value = null;
+  if (traffic.selected !== r.message.to) select(r.message.to);
+  // The parser only accepts aircraft on the scope, so the readback follows at once;
+  // performance problems come back later as "unable" (snapshot events).
+  addLog('atc', 'ATC', instruction(r.message, ac).text);
+  addLog('pilot', r.message.to, readback(r.message, ac).text);
+  const issued = await session.issue(r.message);
+  if (!issued.ok) addLog('error', r.message.to, issued.reason ?? 'not delivered');
+}
+
+function onCommandKey(e: KeyboardEvent): void {
+  switch (e.key) {
+    case 'Enter':
+      e.preventDefault();
+      void submitCommand();
+      break;
+    case 'ArrowUp':
+      e.preventDefault();
+      if (historyIndex < history.length - 1) commandText.value = history[++historyIndex]!;
+      break;
+    case 'ArrowDown':
+      e.preventDefault();
+      historyIndex = Math.max(-1, historyIndex - 1);
+      commandText.value = historyIndex >= 0 ? history[historyIndex]! : '';
+      break;
+    case 'Escape':
+      e.preventDefault();
+      if (commandText.value) commandText.value = '';
+      else commandInput.value?.blur();
+      break;
+  }
+}
+
+function onCommandInput(): void {
+  commandError.value = null;
+  historyIndex = -1;
+}
+
+const commandPlaceholder = computed(() =>
+  traffic.selected ? `${traffic.selected} › D080 H240 S220 · Enter` : 'DAL1192 D080 H240 S220 · Enter'
+);
+
+const logTime = (t: number) => {
+  const s = Math.floor(t);
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+};
 
 function setRate(r: SimRate): void {
   simRate.value = r;
@@ -180,7 +287,12 @@ function onPointerMove(e: PointerEvent): void {
 }
 
 function onPointerUp(e: PointerEvent): void {
-  if (e.type === 'pointerup' && pressAt && pointers.size === 1) select(hitTest(hits, local(e)));
+  if (e.type === 'pointerup' && pressAt && pointers.size === 1) {
+    const hit = hitTest(hits, local(e));
+    select(hit);
+    // Mouse users type the command next; on touch the keyboard would cover the scope.
+    if (hit && e.pointerType === 'mouse') commandInput.value?.focus();
+  }
   pressAt = null;
   pointers.delete(e.pointerId);
   pinchDistance = 0;
@@ -217,6 +329,13 @@ function toggle(layer: keyof ScopeLayers): void {
 }
 
 function onKey(e: KeyboardEvent): void {
+  // Typing in the command line is not a scope shortcut.
+  if (e.target instanceof HTMLInputElement) return;
+  if ((e.key === 'Enter' || e.key === '/') && commandInput.value) {
+    e.preventDefault();
+    commandInput.value.focus();
+    return;
+  }
   const pan = 60;
   // Numpad layout moves the selected data block (STARS-style leader direction).
   if (/^[1-46-9]$/.test(e.key) && traffic.selected && picture) {
@@ -332,6 +451,7 @@ onMounted(async () => {
     const { pack } = await loadPack(String(route.params.packId));
     const m = buildVideoMap(pack);
     map.value = m;
+    fixIds = new Set(pack.fixes.map((f) => f.id));
     magVar.value = pack.meta.magVar;
     fitCanvas();
     await startTraffic(pack, m);
@@ -413,15 +533,36 @@ onBeforeUnmount(() => {
           VEC {{ traffic.vectorMinutes }}
         </button>
       </div>
-    </div>
-
-    <div v-if="selectedInfo" class="panel bottom-right">
-      <div class="info">
+      <div v-if="selectedInfo" class="info">
         <div class="info-head">{{ selectedInfo.head }}</div>
         <div>{{ selectedInfo.alt }}  {{ selectedInfo.hdg }}</div>
         <div>{{ selectedInfo.spd }}</div>
         <div v-if="selectedInfo.nav" class="dim">{{ selectedInfo.nav }}</div>
       </div>
+    </div>
+
+
+    <div v-if="scenarioName" class="comms">
+      <div v-for="l in log" :key="l.id" class="log-line" :class="l.kind">
+        <span class="dim">{{ logTime(l.t) }}</span>
+        <span class="who">{{ l.who }}</span>
+        <span>{{ l.text }}</span>
+      </div>
+      <div v-if="commandError || commandPreview" class="preview" :class="{ bad: commandError || !commandPreview?.ok }">
+        {{ commandError ?? commandPreview?.text }}
+      </div>
+      <input
+        ref="commandInput"
+        v-model="commandText"
+        class="command"
+        :placeholder="commandPlaceholder"
+        spellcheck="false"
+        autocomplete="off"
+        autocapitalize="characters"
+        enterkeyhint="send"
+        @keydown="onCommandKey"
+        @input="onCommandInput"
+      />
     </div>
 
     <div class="panel bottom-left">
@@ -474,10 +615,6 @@ onBeforeUnmount(() => {
   left: 0;
   gap: 16px;
 }
-.bottom-right {
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
-  right: 0;
-}
 .row {
   display: flex;
   gap: 4px;
@@ -512,6 +649,66 @@ onBeforeUnmount(() => {
 }
 .info-head {
   color: #ffd27a;
+}
+.comms {
+  position: absolute;
+  left: 8px;
+  /* Clear of the status row and the scale bar. */
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 44px);
+  width: min(620px, calc(100vw - 16px));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.log-line {
+  display: flex;
+  gap: 8px;
+  padding: 1px 6px;
+  background: rgba(11, 22, 32, 0.75);
+  color: #a9bfca;
+}
+.log-line > span:last-child {
+  flex: 1;
+}
+.log-line .who {
+  min-width: 64px;
+}
+.log-line.atc .who {
+  color: #cfe0e8;
+}
+.log-line.pilot {
+  color: #8fe3a8;
+}
+.log-line.unable,
+.log-line.error {
+  color: #e07a6a;
+}
+.preview {
+  padding: 2px 6px;
+  color: #8fb0c0;
+  background: rgba(11, 22, 32, 0.75);
+}
+.preview.bad {
+  color: #e0a46a;
+}
+.command {
+  margin-top: 2px;
+  padding: 6px 8px;
+  border: 1px solid #21404f;
+  border-radius: 3px;
+  background: rgba(15, 34, 48, 0.92);
+  color: #e6f2f8;
+  font: inherit;
+  font-size: 13px;
+  text-transform: uppercase;
+  outline: none;
+}
+.command:focus {
+  border-color: #3a5f72;
+}
+.command::placeholder {
+  color: #35596d;
+  text-transform: none;
 }
 .btn {
   min-width: 34px;

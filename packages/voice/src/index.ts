@@ -28,5 +28,10 @@
  *   Azure Neural TTS (≈ $15 per 1 M chars).
  *   Why better: more natural, more accents, no model download.
  *   Price: ≈ $1.8–3.6 per subscriber-month at ~120 k chars — too costly as default.
+ *
+ * Today: keyboard command line (command.ts), radio callsigns (telephony.ts) and
+ * FAA phraseology for instructions, readbacks and "unable" (phraseology.ts).
  */
-export {};
+export * from './telephony';
+export * from './phraseology';
+export * from './command';
