@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## Unreleased
+
+### Features
+
+* **home:** full Home strip workflows from skymess — START GAME (gameplay), ENTER CONTROL CENTER (airport pages → shifts → gameplay), TRAINING CENTER, SYSTEM CONFIG (brightness/audio settings), GO PRO (paywall), BACK, EXIT, HOME
+* **game:** Phaser game core, HUD, pause / level-complete modals, speed control popup, single-device Waiting screen
+* **store:** game, userScores and shiftProgress stores; monetization and settings stores restored to full
+
+### Bug Fixes
+
+* **router:** add the `Airfields` route the game navigates to after a level (skymess never defined it)
+* **router:** a locked level opens the paywall on Home instead of the splash
+* **settings:** drop graphics/zoom emits that only ever sent `undefined`
+* **types:** typecheck is clean across the game (event payloads, Phaser renderer, shift typing)
+
 ## 0.0.0 (2026-10-28)
 
 Initial atc-app baseline, ported from skymess (skymess commit `3f553ce`). Earlier history lives in the skymess repository.

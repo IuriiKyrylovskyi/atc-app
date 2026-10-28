@@ -99,6 +99,9 @@
               recoveryWord: {{ maskSecret(monetization.recoveryWord) }}<br />
               platform: {{ monetization.platform }}<br />
               purchaseError: {{ monetization.purchaseError ?? '—' }}<br />
+              lastPassedLevel: {{ monetization.lastPassedLevel ?? '—' }}<br />
+              passedLevels: {{ JSON.stringify(monetization.passedLevels) }}<br />
+              nextLevelToPlay: {{ monetization.nextLevelToPlay }}<br />
             </div>
 
             <div class="debug-section">

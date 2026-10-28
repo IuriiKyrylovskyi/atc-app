@@ -113,8 +113,13 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { useStripDebug } from '@/composables/useStripDebug';
-import { stripsButtons } from '@/pagesData/strips';
-import type { IStrip, IStripButtonType, StripTypes } from '@/pagesData/strips';
+import {
+  stripsAirportButtons,
+  stripsButtons,
+  stripsShiftButtons,
+  stripsTrainingButtons,
+} from '@/pagesData/strips';
+import type { IStrip, IStripButtonType } from '@/pagesData/strips';
 
 interface Props {
   column: IStrip[];
@@ -266,9 +271,17 @@ function visualIndex(i: number): number {
 }
 
 function resolveStripButton(strip: IStrip): IStripButtonType | undefined {
-  // Page data may still name a button by its `stripsButtons` key.
-  const type: unknown = strip.type;
-  return typeof type === 'string' ? stripsButtons[type as StripTypes] : strip.type;
+  if (strip.id === 'airport') {
+    return typeof strip.type === 'string' ? stripsAirportButtons[strip.type] : strip.type;
+  }
+  if (strip.id === 'shift') {
+    return typeof strip.type === 'string' ? stripsShiftButtons[strip.type] : strip.type;
+  }
+  if (strip.id === 'training') {
+    return typeof strip.type === 'string' ? stripsTrainingButtons[strip.type] : strip.type;
+  }
+
+  return typeof strip.type === 'string' ? stripsButtons[strip.type] : strip.type;
 }
 
 function getStripClickHandler(strip: IStrip): ((strip: IStrip, i: number) => void) | undefined {

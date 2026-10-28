@@ -36,6 +36,9 @@ export const ENV = {
   // Mobile / web version check
   VITE_VERSION_CHECK_URL: env.VITE_VERSION_CHECK_URL ?? 'mocked_VITE_VERSION_CHECK_URL',
 
+  // 'true' loads levels_full_example.json locally instead of the paid bucket (dev only).
+  VITE_USE_LOCAL_FULL_LEVELS: env.VITE_USE_LOCAL_FULL_LEVELS ?? 'mocked_VITE_USE_LOCAL_FULL_LEVELS',
+
   // Debug overlay + paywall debug block. 'true' turns them on.
   VITE_SHOW_DEBUG: env.VITE_SHOW_DEBUG ?? 'mocked_VITE_SHOW_DEBUG',
 } as Record<
@@ -47,6 +50,7 @@ export const ENV = {
   | 'VITE_ADMOB_INTERSTITIAL_ID_ANDROID'
   | 'VITE_ADMOB_INTERSTITIAL_ID_IOS'
   | 'VITE_VERSION_CHECK_URL'
+  | 'VITE_USE_LOCAL_FULL_LEVELS'
   | 'VITE_SHOW_DEBUG',
   string
 >;

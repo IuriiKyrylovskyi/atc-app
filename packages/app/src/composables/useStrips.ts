@@ -1,9 +1,15 @@
 import { ref, computed, type ComputedRef } from 'vue';
+import { useRoute } from 'vue-router';
 import pagesData from '@/pagesData/pagesData';
 import { stripsButtons } from '@/pagesData/strips';
 import type { IStrip } from '@/pagesData/strips';
+import { getAirportById } from '@/game/config/airports.config';
+import { SHIFTS } from '@/game/config/level.structure';
+import type { IAirfield } from '@/pagesData/airfields';
 import clickSound from '@/assets/audio/click.wav';
 import { useMonetizationStore } from '@/stores/monetization';
+import { useUserScoresStore } from '@/stores/userScores';
+import { progressService } from '@/services/progress';
 
 export type ColumnKey = 'column-center' | 'column-left' | 'column-right';
 
@@ -101,11 +107,59 @@ export function useStrips(
   screenType: ComputedRef<string>,
   screenRotation: ComputedRef<string>
 ) {
+  const route = useRoute();
+  const airportId = String(route.params.airportId ?? '');
+  const airport = airportId ? getAirportById(airportId) : null;
+  const scoresStore = useUserScoresStore();
+  const isBlocked = (shiftId: string): boolean => {
+    if (!airport) return false;
+    // One rule for both tiers: premium players own every airport and follow
+    // their server-synced chain, free players follow the local one.
+    return !progressService.isShiftPlayable(airport.id, shiftId);
+  };
+
+  // Populate the server-side `available` flag for every shift that is
+  // currently reachable on this airport. Guarded so it only runs once per
+  // airport per session; the set is component-local, so leaving the page and
+  // coming back re-syncs after any progress made in between.
+  const availabilitySynced = new Set<string>();
+  function syncAvailability(): void {
+    if (!airport) return;
+    if (availabilitySynced.has(airport.id)) return;
+    availabilitySynced.add(airport.id);
+
+    for (const shift of SHIFTS) {
+      const levelId = `${airport.id}:${shift.id}`;
+      if (progressService.isShiftPlayable(airport.id, shift.id)) {
+        scoresStore.markAvailable(levelId);
+      }
+    }
+  }
+
+  syncAvailability();
+  const airfield: IAirfield | undefined = airport
+    ? {
+        icao: airport.id.includes('/') ? airport.id.toUpperCase() : airport.icao,
+        name: airport.displayName,
+        subtext: airport.signature,
+        iata: '',
+        number: 0,
+        isPremium: airport.tier === 'paid',
+        icon1: '',
+        icon2: '',
+      }
+    : undefined;
+
   const settled = ref(new Set<number>());
   const landingTimers = new Map<number, number>();
 
   const strips = computed(() => {
-    const pages = pagesData(monetization.isPremium) as unknown as Record<string, Record<string, Record<string, Record<string, unknown>>>>;
+    const pages = pagesData(
+      monetization.isPremium,
+      airportId,
+      airfield,
+      isBlocked
+    ) as unknown as Record<string, Record<string, Record<string, Record<string, unknown>>>>;
     const page = pages[pageName.value]?.[screenType.value]?.[screenRotation.value];
     const column = page?.[columnKey];
     if (!Array.isArray(column)) return [];

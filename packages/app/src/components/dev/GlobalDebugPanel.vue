@@ -111,6 +111,32 @@
               <span class="global-debug-key">purchaseError</span>
               <span class="global-debug-val">{{ monetization.purchaseError ?? '—' }}</span>
             </div>
+            <div class="global-debug-row">
+              <span class="global-debug-key">serverLevel</span>
+              <span class="global-debug-val">{{ monetization.serverLevel }}</span>
+            </div>
+            <div class="global-debug-row">
+              <span class="global-debug-key">lastPassedLevel</span>
+              <span class="global-debug-val">{{ monetization.lastPassedLevel ?? '—' }}</span>
+            </div>
+            <div class="global-debug-row">
+              <span class="global-debug-key">nextLevelToPlay</span>
+              <span class="global-debug-val">{{ monetization.nextLevelToPlay }}</span>
+            </div>
+            <div class="global-debug-row">
+              <span class="global-debug-key">maxAccessibleLevel</span>
+              <span class="global-debug-val">{{ monetization.maxAccessibleLevel }}</span>
+            </div>
+            <div class="global-debug-row">
+              <span class="global-debug-key">upsellMessage</span>
+              <span class="global-debug-val">{{ monetization.upsellMessage }}</span>
+            </div>
+            <div class="global-debug-row">
+              <span class="global-debug-key">passedLevels (count)</span>
+              <span class="global-debug-val">{{
+                Object.keys(monetization.passedLevels).length
+              }}</span>
+            </div>
           </div>
 
           <!-- Paywall + restore modal state (cross-component flags synced via the debug store) -->
@@ -225,7 +251,7 @@
 import { computed, ref, watch, nextTick } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { detectRuntime } from '@/utils/platform';
-import { getDeviceInfo } from '@/utils/deviceInfo';
+import { getDeviceInfo } from '@/game/utils/deviceInfo';
 import { useDebugStore } from '@/stores/debug';
 import { useMonetizationStore } from '@/stores/monetization';
 import { maskSecret, redactStorageValue } from '@/lib/redact';

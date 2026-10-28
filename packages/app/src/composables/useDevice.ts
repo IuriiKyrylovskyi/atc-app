@@ -1,5 +1,5 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { detectAspectRatio } from '@/utils/aspectRatio';
+import { detectAspectRatio } from '@/game/config/aspectRatio.config';
 
 // Eagerly evaluated at module load so the FIRST render already picks the right
 // mobile/desktop + portrait/landscape strip layout. `useDevice` used to start

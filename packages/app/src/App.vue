@@ -77,7 +77,7 @@
   <!-- Close flow ──────────────────────────────────────────────────────────────
     Mounted ONCE, globally: the EXIT strip and the splash ✕ can be pressed on
     any route, and the overlay has to cover every layer underneath (the
-    paywall, the debug panel). While a close is
+    Phaser canvas, the HUD, the paywall, the debug panel). While a close is
     in flight it blocks every touch, click and key press.
   ────────────────────────────────────────────────────────────────────────────-->
   <AppCloseOverlay
@@ -97,8 +97,12 @@ import { defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vu
 import { useRouter } from 'vue-router';
 import { useSettingsStore } from '@/stores/settings';
 import { useMonetizationStore } from '@/stores/monetization';
+import { useGameStore } from '@/stores/game';
+import { useUserScoresStore } from '@/stores/userScores';
+import { useSessionGuard } from '@/composables/useSessionGuard';
 import { useAppClose } from '@/composables/useAppClose';
-import { clearUnloadGuard } from '@/composables/useUnloadGuard';
+import { setUnloadGuard, clearUnloadGuard } from '@/composables/useUnloadGuard';
+import { GameCore } from '@/game/core/GameCore';
 import UpdateNotification from '@/components/UpdateNotification.vue';
 import AppCloseOverlay from '@/components/AppCloseOverlay.vue';
 import AppGoodbye from '@/components/AppGoodbye.vue';
@@ -136,6 +140,9 @@ function resetViewportMeta(): void {
 const router = useRouter();
 const settingsStore = useSettingsStore();
 const monetizationStore = useMonetizationStore();
+const gameStore = useGameStore();
+const scoresStore = useUserScoresStore();
+const sessionGuard = useSessionGuard();
 const isDev = import.meta.env.DEV;
 const { checkForUpdates } = useUpdateCheck();
 const debugStore = useDebugStore();
@@ -176,6 +183,17 @@ const restoringKey = ref(false);
 const restoreModalError = ref<string | null>(null);
 const restoreModalSuccess = ref(false);
 const restoreModalSkipped = ref(false);
+
+async function flushScores(): Promise<void> {
+  try {
+    await scoresStore.flush();
+  } catch (e) {
+    console.warn('Score flush on close failed (non-fatal):', e);
+  }
+}
+
+/** True while the app itself paused the level because it went to the background. */
+let pausedByLifecycle = false;
 
 function skipRestore(): void {
   debugStore.info('App.vue: skipRestore called');
@@ -257,6 +275,7 @@ async function submitRestoreAlias(): Promise<void> {
 }
 
 let backHandle: { remove: () => void } | null = null;
+let appStateHandle: { remove: () => void } | null = null;
 void (async () => {
   try {
     const { App } = await import('@capacitor/app');
@@ -284,15 +303,89 @@ onMounted(async () => {
   settingsStore.loadSettings();
   console.log('✅ Settings loaded');
 
-  // 2. Init monetization (async — auth + Supabase sync)
+  // 2. Load cached high score
+  gameStore.loadHighScore();
+
+  // 3. Init monetization (async — auth + Supabase sync)
   //    Router guard also calls this, but doing it here ensures
   //    isPremium is resolved before the first view renders.
   //    init() is idempotent — safe to call twice.
   await monetizationStore.init();
   console.log(`✅ Monetization ready — premium: ${monetizationStore.isPremium}`);
 
-  // 3. Check for updates (non-blocking, respects user settings & interval)
+  // 4. Check for updates (non-blocking, respects user settings & interval)
   void checkForUpdates();
+
+  // 5. Flush any pending best-plane counts when the app is backgrounded so a
+  //    run that completed right before the user left the app is not lost, and
+  //    park the Phaser scene so its music does not keep playing behind the
+  //    Android home screen.
+  try {
+    const { App } = await import('@capacitor/app');
+    appStateHandle = await App.addListener('appStateChange', (state: { isActive: boolean }) => {
+      if (state.isActive) {
+        // Only undo a pause WE caused. If the player had paused the level
+        // themselves, it must stay paused.
+        if (pausedByLifecycle) {
+          pausedByLifecycle = false;
+          GameCore.active?.resume();
+        }
+        return;
+      }
+
+      void flushScores();
+
+      // Pausing the scene fires its 'pause' event, which is what stops the
+      // music track (GameScene listens for it and calls AudioSystem.pauseMusic).
+      // The WebView survives Android backgrounding, so without this the level
+      // keeps running — audibly — with nobody watching.
+      if (GameCore.active && !gameStore.isPaused) {
+        pausedByLifecycle = true;
+        GameCore.active.pause();
+      }
+    });
+  } catch {
+    // @capacitor/app not available (web) — onBeforeUnmount covers that path.
+  }
+
+  // 5. Single active device: claim the play session in the foreground and hand
+  //    it back when the app is backgrounded, so a second device does not have
+  //    to sit out the 3 min timeout.
+  void sessionGuard.attachLifecycle();
+  watch(
+    () => sessionGuard.state.value,
+    (value) => {
+      // The heartbeat found the session held elsewhere mid-run (typically our
+      // own session expired while backgrounded). Leave the level rather than
+      // keep playing and overwriting the other device's progress.
+      if (value !== 'blocked') return;
+      const current = router.currentRoute.value;
+      if (current.name === 'Gameplay' || current.name === 'Training Play') {
+        void router.replace({ name: 'Waiting', query: { redirect: current.fullPath } });
+      }
+    }
+  );
+
+  // Losing premium (failed restore, account deletion) must drop the local
+  // session too, otherwise the guard keeps heartbeating for an account that is
+  // no longer ours.
+  watch(
+    () => monetizationStore.isPremium,
+    (isPremium) => {
+      if (!isPremium) sessionGuard.reset();
+    }
+  );
+
+  // Warn when a game is in progress and the user tries to close the browser tab.
+  // The handler lives in useUnloadGuard so the close flow can remove it
+  // before terminating — Electron's `mainWindow.close()` runs `beforeunload`,
+  // and a handler that calls `preventDefault()` cancels the close.
+  watch(
+    () => gameStore.isPlaying,
+    (playing) => {
+      setUnloadGuard(playing);
+    }
+  );
 
   watch(
     () => showRestoreModal.value,
@@ -339,7 +432,10 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopNetworkMonitoring();
   backHandle?.remove();
+  appStateHandle?.remove();
   clearUnloadGuard();
+  void flushScores();
+  sessionGuard.releaseSession();
 });
 </script>
 

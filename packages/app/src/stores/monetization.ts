@@ -1,16 +1,28 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { supabase } from '@/lib/supabase';
 import type { Profile } from '@/lib/supabase';
 import { USER_ALIAS_STORAGE_KEY, USER_PASSWORD_STORAGE_KEY } from '@/lib/supabase';
 import { RevenueCatService, RC_ENTITLEMENT_ID, addPaymentLog } from '@/services/revenueCatService';
+import { LevelManager } from '@/services/levelManager';
 import { AdMobService } from '@/services/adMobService';
+import { getBackgroundForLevel, prefetchBackground } from '@/services/backgroundAssetService';
 import { Capacitor } from '@capacitor/core';
 import { safeStorage } from '@/lib/safeStorage';
+import { useUserScoresStore } from '@/stores/userScores';
 import { useDebugStore } from '@/stores/debug';
+import {
+  getNextLevelInAirport,
+  getLevelNumberById,
+  getLevelByNumber,
+} from '@/game/config/levels.config';
+import { menuOrder } from '@/game/config/airports.config';
+import { getShiftEnum } from '@/game/config/level.structure';
 import { NetworkTimeoutError } from '@/utils/fetchWithTimeout';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
+export const FREE_LEVEL_LIMIT = 15;
+
 // ─── Network-resilience helpers ────────────────────────────────────────────────
 // A cold boot over a bad network can hang a Supabase / RPC / Edge Function
 // call for minutes. Each server-bound init step is raced against a per-step
@@ -93,6 +105,7 @@ export const useMonetizationStore = defineStore('monetization', () => {
   const userId = ref<string | null>(null);
   const accountId = ref<string | null>(null);
   const isPremium = ref(false);
+  const serverLevel = ref(1);
   const platform = ref<Profile['platform']>('web');
   const isLoading = ref(false);
   const isInitialized = ref(false);
@@ -107,6 +120,211 @@ export const useMonetizationStore = defineStore('monetization', () => {
 
   const lastCheckedAt = ref<number>(0);
   const THROTTLE_MS = 60_000;
+
+  // ── Shift-completion tracking (local-first, server-synced for premium) ────
+  // `lastPassedLevel` is the LAST shift the user COMPLETED, stored as a
+  // `[airport]:[shift]` string (e.g. `eglc:early-bird`). It is the single
+  // source of truth for where Start Game should redirect: the user lands on
+  // the NEXT shift after this one, never on this one again.
+  const lastPassedLevel = ref<string | null>(null);
+  // `passedLevels` is the same data as a per-airport JSON map:
+  //   { "eglc": "early-bird", "ksdm/mmtj": "midday-mix", ... }
+  // It lets the client resolve the next unblocked shift for ANY airport
+  // without re-deriving it from `lastPassedLevel`.
+  const passedLevels = ref<Record<string, string>>({});
+
+  // ── Getters ────────────────────────────────────────────────────────────────
+  const maxAccessibleLevel = computed(() => (isPremium.value ? 999 : FREE_LEVEL_LIMIT));
+  const canAccessLevel = computed(() => (level: number) => level <= maxAccessibleLevel.value);
+  const upsellMessage = computed(() =>
+    isPremium.value
+      ? ''
+      : `You've reached the free limit (${FREE_LEVEL_LIMIT} levels). Unlock all levels with Pro!`
+  );
+
+  /**
+   * The `[airport]:[shift]` level the user should land on when they tap
+   * Start Game. It is the NEXT shift after `lastPassedLevel` — i.e. the first
+   * shift the user has not yet completed — so a user who just cleared
+   * `WADD:Midday Mix` is redirected to `/play/WADD/Evening Rush`.
+   *
+   * When the last-passed airport is fully cleared (no next shift in that
+   * airport) the cursor advances to the next airport in menu order and lands
+   * on its first shift, so progress never stalls at the end of an airport.
+   *
+   * Falls back to the first shift of the first free airport
+   * (`eglc:red-eye`) when nothing has been completed yet.
+   */
+  const nextLevelToPlay = computed<string>(() => {
+    const firstAirport = 'eglc';
+    const firstShift = 'red-eye';
+    if (!lastPassedLevel.value) return `${firstAirport}:${firstShift}`;
+
+    const [airportId, shiftId] = lastPassedLevel.value.split(':');
+    if (!airportId || !shiftId) return `${firstAirport}:${firstShift}`;
+
+    const next = getNextLevelInAirport(lastPassedLevel.value);
+    if (next) return next.id;
+
+    // Airport fully cleared — advance to the next airport in menu order and
+    // land on its first shift. This is what keeps Start Game moving forward
+    // instead of looping back to `eglc:red-eye` whenever an airport is done.
+    const airports = menuOrder();
+    const currentIndex = airports.findIndex((a) => a.id === airportId);
+    for (let i = currentIndex + 1; i < airports.length; i++) {
+      const candidate = `${airports[i].id}:red-eye`;
+      const level = getLevelNumberById(candidate);
+      if (level !== null) return candidate;
+    }
+    return `${firstAirport}:${firstShift}`;
+  });
+
+  /**
+   * The last shift the user COMPLETED on a specific airport, or `null` when
+   * the user has never finished a shift there. Used by the airport page to
+   * decide which shifts are unblocked.
+   */
+  function getPassedLevelForAirport(airportId: string): string | null {
+    return passedLevels.value[airportId] ?? null;
+  }
+
+  /**
+   * Record that the user completed a shift. Called from the LevelComplete
+   * modal — the moment the success screen appears the data is already
+   * written, so a crash or backgrounding afterwards cannot lose it.
+   *
+   * Free users keep this fully local (localStorage-backed); premium users
+   * additionally persist it to `profiles.last_passed_level` /
+   * `profiles.passed_levels` so it survives app restarts and cross-device
+   * sessions.
+   *
+   * The stored value is `[airport]:[shiftEnum]` — the numeric SHIFT_ENUM,
+   * not the shift's string `id`. A future rename of a shift slug (e.g.
+   * `evening-rush` → `evening-peak`) would otherwise silently break every
+   * stored value on every device and on the server. The enum is derived
+   * from the SHIFTS array position, so extending the array only appends.
+   */
+  function markLevelPassed(airportId: string, shiftId: string): void {
+    if (!airportId || !shiftId) return;
+    // Endless mode has no completion screen — there is no "passed" state for
+    // it, so it must never be written to `last_passed_level` / `passed_levels`.
+    if (shiftId === 'endless') return;
+
+    const shiftEnum = getShiftEnum(shiftId);
+    if (shiftEnum === null) return;
+
+    const levelId = `${airportId}:${shiftEnum}`;
+    lastPassedLevel.value = levelId;
+    passedLevels.value = { ...passedLevels.value, [airportId]: String(shiftEnum) };
+    persistLocalPassedLevels();
+    if (isPremium.value) {
+      savePassedLevelsToServer().catch(() => {});
+    }
+  }
+
+  const LOCAL_PASSED_STORAGE_KEY = 'atc-app_passed_levels_v1';
+
+  /**
+   * Merge a per-airport passed-shift map (and an optional explicit `last`
+   * value) into the store. `last` is the LAST shift the user COMPLETED — it
+   * must survive reloads as the actual most-recent completion, never
+   * re-derived from a sort of the map (which would silently lose progress if
+   * the user later completes an earlier shift on a different airport).
+   *
+   * Both `map` and `last` store the numeric SHIFT_ENUM (e.g. `WADD:4`), not
+   * the shift's string id.
+   */
+  function applyPassedLevels(map: Record<string, string>, last: string | null): void {
+    passedLevels.value = { ...map };
+    lastPassedLevel.value = last;
+    persistLocalPassedLevels();
+  }
+
+  function deriveLastFromMap(map: Record<string, string>): string | null {
+    let last: string | null = null;
+    let bestEnum = -1;
+    for (const [airport, shiftEnumStr] of Object.entries(map)) {
+      const shiftEnum = Number(shiftEnumStr);
+      if (!Number.isInteger(shiftEnum) || shiftEnum <= 0) continue;
+      if (shiftEnum > bestEnum) {
+        bestEnum = shiftEnum;
+        last = `${airport}:${shiftEnum}`;
+      }
+    }
+    return last;
+  }
+
+  function loadLocalPassedLevels(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = safeStorage.getItem(LOCAL_PASSED_STORAGE_KEY);
+      if (!raw) return;
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+
+      // On-disk shape is `{ last: '[airport]:[shiftEnum]' | null, map: {...} }`.
+      // Older versions may have stored only the bare map — fall back to
+      // deriving `last` from the map when the wrapper is absent, so an upgrade
+      // never silently loses progress.
+      const wrapper = parsed as { last?: unknown; map?: unknown };
+      const mapRaw = wrapper.map ?? parsed;
+      if (!mapRaw || typeof mapRaw !== 'object' || Array.isArray(mapRaw)) return;
+
+      const out: Record<string, string> = {};
+      for (const [airport, shiftEnumStr] of Object.entries(mapRaw as Record<string, unknown>)) {
+        if (typeof airport === 'string' && typeof shiftEnumStr === 'string' && shiftEnumStr) {
+          out[airport] = shiftEnumStr;
+        }
+      }
+
+      const last = typeof wrapper.last === 'string' ? wrapper.last : deriveLastFromMap(out);
+      applyPassedLevels(out, last);
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  function persistLocalPassedLevels(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      safeStorage.setItem(
+        LOCAL_PASSED_STORAGE_KEY,
+        JSON.stringify({ last: lastPassedLevel.value, map: passedLevels.value })
+      );
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  async function savePassedLevelsToServer(): Promise<void> {
+    if (!userId.value) return;
+    await supabase
+      .from('profiles')
+      .update({
+        last_passed_level: lastPassedLevel.value,
+        passed_levels: passedLevels.value,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId.value);
+  }
+
+  /**
+   * Force the passed-levels state to the server. Premium only — free users
+   * keep it in localStorage, which is the source of truth for them.
+   *
+   * Used by `progressService.flush()` (including the free → paid handover,
+   * where the local free progress becomes the account's progress) and by the
+   * app-close / background flush. Returns without touching the network for a
+   * free or signed-out player.
+   */
+  async function flushProgressToServer(): Promise<void> {
+    if (!isPremium.value || !userId.value) return;
+    try {
+      await savePassedLevelsToServer();
+    } catch (err) {
+      console.warn('⚠️ Progress flush failed (non-fatal):', err);
+    }
+  }
 
   // ── Strong Platform Detection ──────────────────────────────────────────────
   function getPlatform(): Profile['platform'] {
@@ -331,8 +549,20 @@ export const useMonetizationStore = defineStore('monetization', () => {
     userPassword.value = null;
     recoveryWord.value = null;
     needsRestore.value = false;
+    lastPassedLevel.value = null;
+    passedLevels.value = {};
     clearStoredAlias();
     clearStoredPassword();
+    try {
+      safeStorage.removeItem(LOCAL_PASSED_STORAGE_KEY);
+    } catch {
+      // Non-fatal
+    }
+    try {
+      useUserScoresStore().reset();
+    } catch {
+      // Non-fatal
+    }
   }
 
   async function ensureAuth(): Promise<string> {
@@ -362,7 +592,7 @@ export const useMonetizationStore = defineStore('monetization', () => {
 
     const { data, error } = await supabase
       .from('profiles')
-      .select('is_premium, account_id')
+      .select('is_premium, last_passed_level, passed_levels, platform, account_id')
       .eq('id', userId.value)
       .maybeSingle();
 
@@ -375,7 +605,59 @@ export const useMonetizationStore = defineStore('monetization', () => {
       isPremium.value = data.is_premium;
       if (data.account_id) accountId.value = data.account_id;
       lastCheckedAt.value = Date.now();
+      // `last_passed_level` is the LAST shift the user COMPLETED, stored as a
+      // `[airport]:[shift]` string. `passed_levels` is the same data as a
+      // per-airport JSON map. Both are the source of truth for where Start
+      // Game should redirect (the NEXT shift after the passed one).
+      //
+      // The two columns are merged INDEPENDENTLY: a server row may have one
+      // but not the other (e.g. a row created before the `passed_levels`
+      // column existed, or a webhook that only touched `last_passed_level`).
+      // Treating them as a unit would silently drop progress whenever one
+      // side is null.
+      //
+      // Local state wins on conflict — `syncFromServer` runs after
+      // `loadLocalPassedLevels()` in `init()`, so any local completion that
+      // has not yet been flushed to the server is more recent than the
+      // server snapshot.
+      if (data.passed_levels && typeof data.passed_levels === 'object') {
+        const merged = { ...data.passed_levels, ...passedLevels.value };
+        passedLevels.value = merged;
+        persistLocalPassedLevels();
+      }
+      if (typeof data.last_passed_level === 'string' && data.last_passed_level) {
+        lastPassedLevel.value = data.last_passed_level;
+      } else if (data.last_passed_level === null && Object.keys(passedLevels.value).length > 0) {
+        // Server has no `last` but the local map is populated — derive it
+        // from the map rather than clobbering the local value with null.
+        lastPassedLevel.value = deriveLastFromMap(passedLevels.value);
+      }
     }
+  }
+
+  /**
+   * @deprecated Shift completion is now recorded via `markLevelPassed()`,
+   * which writes `last_passed_level` + `passed_levels` in the
+   * `[airport]:[shiftEnum]` form. This legacy entry point is kept only for any
+   * external caller that still passes a bare numeric level; it resolves the
+   * level id from the engine config and rewrites the shift half to the
+   * numeric SHIFT_ENUM so it never writes a bare integer or a string slug
+   * into `last_passed_level` (either would break Start Game's redirect).
+   */
+  async function saveProgress(level: number): Promise<void> {
+    if (!userId.value) return;
+    const resolved = getLevelByNumber(level);
+    if (!resolved) {
+      serverLevel.value = level;
+      return;
+    }
+    const shiftEnum = getShiftEnum(resolved.shiftId);
+    const levelId = shiftEnum !== null ? `${resolved.airportId}:${shiftEnum}` : resolved.id;
+    await supabase
+      .from('profiles')
+      .update({ last_passed_level: levelId, updated_at: new Date().toISOString() })
+      .eq('id', userId.value);
+    serverLevel.value = level;
   }
 
   /**
@@ -559,8 +841,9 @@ export const useMonetizationStore = defineStore('monetization', () => {
         needsRestore.value = false;
         // After restore, load the full account (alias, password, recovery word).
         await loadAccount();
+        await useUserScoresStore().loadFromServer();
         // The restore RPC links the device to the canonical account (no row
-        // copying), so re-sync to pick up account-level state.
+        // copying), so re-sync to pick up account-level progress.
         await syncFromServer(true);
         return { success: true };
       }
@@ -744,6 +1027,67 @@ export const useMonetizationStore = defineStore('monetization', () => {
     return restoreAccount(normalizedAlias, password);
   }
 
+  /**
+   * Cast (or change) this account's vote on a questionnaire question. The RPC
+   * upserts on (account_id, question), so voting twice updates the one row
+   * rather than adding a second.
+   */
+  async function castVote(
+    question: string,
+    option: string
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!userId.value) return { success: false, error: 'no_account' };
+    if (!question.trim() || !option.trim()) return { success: false, error: 'invalid' };
+
+    try {
+      const { data, error } = await supabase.rpc('cast_vote', {
+        current_user_id: userId.value,
+        p_question: question,
+        p_option: option,
+      });
+
+      if (error) {
+        console.error('cast_vote failed:', error.message);
+        return { success: false, error: 'network' };
+      }
+
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row?.success) return { success: false, error: row?.error ?? 'network' };
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('cast_vote error:', message);
+      return { success: false, error: 'network' };
+    }
+  }
+
+  // ── Paid-content hydration ─────────────────────────────────────────────────
+  // Called right after purchase/restore confirms premium access. Order matters:
+  //   1. full paid levels JSON (LevelManager already handles cache-first + RLS)
+  //   2. the background for whatever level the user will land on next
+  //   3. the NEXT unlocked level's background, prefetched in the background
+  //      (fire-and-forget — must never block or delay the current download)
+  // Never call this before isPremium is true — RLS would reject it anyway,
+  // but we don't want to even attempt the network calls for free users.
+  async function hydratePaidContent(): Promise<void> {
+    if (!isPremium.value) return;
+
+    try {
+      await LevelManager.getLevelData();
+
+      // Hydrate the background for the NEXT shift the user will play on Start
+      // Game (derived from `last_passed_level`), not a stale numeric index.
+      const targetLevel = Math.max(
+        getLevelNumberById(nextLevelToPlay.value) ?? 1,
+        FREE_LEVEL_LIMIT + 1
+      );
+      await getBackgroundForLevel(targetLevel);
+      prefetchBackground(targetLevel + 1); // fire-and-forget, never awaited
+    } catch (err) {
+      console.warn('⚠️ Paid content hydration failed (will retry on next level entry):', err);
+    }
+  }
+
   // ── Purchase (Hardened) ────────────────────────────────────────────────────
   async function purchase(
     pkg?: unknown,
@@ -791,9 +1135,17 @@ export const useMonetizationStore = defineStore('monetization', () => {
       // Sync server state; keep a short delay to let backend webhooks process but don't block UI
       setTimeout(
         () =>
-          syncFromServer(true).catch(() => {}),
+          syncFromServer(true)
+            .then(() => hydratePaidContent())
+            .catch(() => {}),
         1500
       );
+
+      // Free → paid handover: everything the player achieved while free lives
+      // in localStorage, so uploading it now is the whole migration.
+      void import('@/services/progress')
+        .then(({ progressService }) => progressService.migrateFreeToPaid())
+        .catch((err) => console.warn('⚠️ Free progress migration failed (non-fatal):', err));
 
       return { success: true };
     }
@@ -845,9 +1197,17 @@ export const useMonetizationStore = defineStore('monetization', () => {
     // but don't block the UI.
     setTimeout(
       () =>
-        syncFromServer(true).catch(() => {}),
+        syncFromServer(true)
+          .then(() => hydratePaidContent())
+          .catch(() => {}),
       1500
     );
+
+    // Free → paid handover: everything the player achieved while free lives in
+    // localStorage, so uploading it now is the whole migration.
+    void import('@/services/progress')
+      .then(({ progressService }) => progressService.migrateFreeToPaid())
+      .catch((err) => console.warn('⚠️ Free progress migration failed (non-fatal):', err));
 
     return { success: true };
   }
@@ -935,6 +1295,12 @@ export const useMonetizationStore = defineStore('monetization', () => {
       await loadAccount();
       await syncFromServer(true);
 
+      // Same follow-ups as a normal purchase: upload free-tier progress, fetch paid content.
+      void import('@/services/progress')
+        .then(({ progressService }) => progressService.migrateFreeToPaid())
+        .catch((err) => console.warn('⚠️ Free progress migration failed (non-fatal):', err));
+      void hydratePaidContent();
+
       return { success: true, alias: userAlias.value };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -1007,6 +1373,10 @@ export const useMonetizationStore = defineStore('monetization', () => {
 
     await syncFromServer(true);
 
+    if (isPremium.value) {
+      await hydratePaidContent();
+    }
+
     return { success: true, isPremium: isPremium.value };
   }
 
@@ -1018,6 +1388,12 @@ export const useMonetizationStore = defineStore('monetization', () => {
     try {
       platform.value = getPlatform();
       const uid = await ensureAuth();
+
+      // Load the local passed-levels cache first so the UI has something to
+      // show immediately and so a server value can merge into it (rather
+      // than the other way around). Free users keep this fully local;
+      // premium users additionally sync it through the server columns.
+      loadLocalPassedLevels();
 
       // Read the locally-stored alias + password pair BEFORE the server-bound
       // chain. These are what let us flag the manual restore modal if RC
@@ -1055,12 +1431,18 @@ export const useMonetizationStore = defineStore('monetization', () => {
       // Hard cap on the whole server-bound chain. Even if several steps each
       // approach their own 8s timeout, this guarantees isLoading flips false
       // within 5s on any network condition. The cap wraps only the serial
-      // server-bound section — RC bind / AdMob init
+      // server-bound section — loadLocalPassedLevels / RC bind / AdMob init
       // above are local or native and run outside the race.
       await Promise.race([
         (async () => {
           await safe(loadAccount(), 8000);
           await safe(syncFromServer(true), 8000);
+
+          // Per-level scores (maxPlanes / opened / available) are fetched from the
+          // server on first launch so the state survives app restarts and
+          // cross-device sessions.
+          await safe(useUserScoresStore().loadFromServer(), 8000);
+          await useUserScoresStore().flush();
 
           // If RC restore + server sync still did not make this device premium
           // despite a stored alias+password pair, the purchase is on another RC
@@ -1126,9 +1508,14 @@ export const useMonetizationStore = defineStore('monetization', () => {
         isPremium: isPremium.value,
         needsRestore: needsRestore.value,
       });
+      useDebugStore().info('monetization: init complete', {
+        isInitialized: true,
+        isPremium: isPremium.value,
+        needsRestore: needsRestore.value,
+      });
       isInitialized.value = true;
       console.log(
-        `✅ Monetization ready | platform: ${platform.value} | premium: ${isPremium.value}`
+        `✅ Monetization ready | platform: ${platform.value} | premium: ${isPremium.value} | nextLevel: ${nextLevelToPlay.value}`
       );
     } catch (err) {
       console.error('❌ Monetization init error:', err);
@@ -1153,6 +1540,7 @@ export const useMonetizationStore = defineStore('monetization', () => {
   function reset(): void {
     userId.value = null;
     isPremium.value = false;
+    serverLevel.value = 1;
     platform.value = 'web';
     isLoading.value = false;
     isInitialized.value = false;
@@ -1162,8 +1550,20 @@ export const useMonetizationStore = defineStore('monetization', () => {
     recoveryWord.value = null;
     needsRestore.value = false;
     accountId.value = null;
+    lastPassedLevel.value = null;
+    passedLevels.value = {};
+    try {
+      safeStorage.removeItem(LOCAL_PASSED_STORAGE_KEY);
+    } catch {
+      // Non-fatal
+    }
     clearStoredAlias();
     clearStoredPassword();
+    try {
+      useUserScoresStore().reset();
+    } catch {
+      // Non-fatal
+    }
     AdMobService.reset();
   }
 
@@ -1171,6 +1571,7 @@ export const useMonetizationStore = defineStore('monetization', () => {
     userId,
     accountId,
     isPremium,
+    serverLevel,
     platform,
     isLoading,
     isInitialized,
@@ -1179,10 +1580,20 @@ export const useMonetizationStore = defineStore('monetization', () => {
     userPassword,
     recoveryWord,
     needsRestore,
+    lastPassedLevel,
+    passedLevels,
+    nextLevelToPlay,
+    maxAccessibleLevel,
+    canAccessLevel,
+    upsellMessage,
     init,
     reset,
     loadAccount,
     syncFromServer,
+    saveProgress,
+    flushProgressToServer,
+    markLevelPassed,
+    getPassedLevelForAirport,
     purchase,
     claimPurchase,
     unlinkDevice,
@@ -1190,11 +1601,13 @@ export const useMonetizationStore = defineStore('monetization', () => {
     restoreAccount,
     setRecoveryWord,
     recoverWithWord,
+    castVote,
     getLeaderboard,
     checkAliasAvailability,
     logoutLocally,
     loadStoredAlias,
     loadStoredPassword,
+    hydratePaidContent,
     preloadAd,
     showAdIfReady,
     requestTrackingTransparency,

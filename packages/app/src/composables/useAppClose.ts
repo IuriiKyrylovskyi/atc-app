@@ -17,13 +17,19 @@
  *   - Web      → a browser tab cannot be closed by script, so the app offers
  *                no EXIT affordance there at all (see `isPlainWeb`).
  *
- * The close runs behind a blocking overlay that swallows every user action.
- * When the game is ported, its "record the run / flush scores / release the
- * play session" steps go into `startClose()` before `terminate()`.
+ * The close is a multi-step operation (record the run, flush the scores over
+ * the network, release the play session, terminate), so the whole thing runs
+ * behind a blocking overlay that swallows every user action.
  */
 
 import { ref } from 'vue';
+import { useGameStore } from '@/stores/game';
+import { useUserScoresStore } from '@/stores/userScores';
+import { useSessionGuard } from '@/composables/useSessionGuard';
 import { clearUnloadGuard } from '@/composables/useUnloadGuard';
+import { getLevelByNumber, getLevelById } from '@/game/config/levels.config';
+import { GameCore } from '@/game/core/GameCore';
+import { NetworkTimeoutError } from '@/utils/fetchWithTimeout';
 import { detectRuntime, type AppRuntime } from '@/utils/platform';
 
 export type AppClosePhase = 'idle' | 'confirm' | 'closing' | 'closed' | 'error';
@@ -59,6 +65,14 @@ function platformGoodbyeHint(runtime: AppRuntime): string {
 const goodbyeHint = ref(platformGoodbyeHint(detectRuntime()));
 
 /**
+ * Score-flush cap. Kept at 15 s on purpose: the `userScores` store is
+ * memory-only (no localStorage persistence), so a flush that never completes
+ * means the run's best plane count is lost for good. A hung EXIT is worse
+ * than a slow one.
+ */
+const FLUSH_TIMEOUT_MS = 15000;
+
+/**
  * How long a terminate call may take before we declare it failed. The real
  * close destroys the JS context, so the watchdog only ever fires when the
  * app is STILL ALIVE — i.e. the close genuinely did not happen (a missing
@@ -72,6 +86,45 @@ export function useAppClose() {
   const canTerminate = runtime === 'electron' || runtime === 'android';
   const isPlainWeb = runtime === 'web';
 
+  const gameStore = useGameStore();
+  const scoresStore = useUserScoresStore();
+  const sessionGuard = useSessionGuard();
+
+  // ── Score persistence ─────────────────────────────────────────────────────
+
+  async function flushScoresSafely(): Promise<void> {
+    try {
+      await Promise.race([
+        scoresStore.flush(),
+        // 15s: flush() now races its own upsert at 10s and sleeps 1s+2s
+        // between retries, so a 3s cap here always fired first and
+        // aborted the backoff before it could do a single retry.
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () =>
+              reject(
+                new NetworkTimeoutError(`Score flush on exit timed out after ${FLUSH_TIMEOUT_MS}ms`)
+              ),
+            FLUSH_TIMEOUT_MS
+          )
+        ),
+      ]);
+    } catch (e) {
+      console.warn('Score flush on exit (non-fatal):', e);
+    }
+  }
+
+  /** Save the plane count of a run that is being abandoned mid-level. */
+  function recordRunResult(): void {
+    if (!gameStore.isPlaying && !gameStore.isPaused) return;
+
+    const levelId = gameStore.currentLevelId ?? getLevelByNumber(gameStore.currentLevel)?.id;
+    const level = levelId ? getLevelById(levelId) : null;
+    if (level && gameStore.trainingLevel === null) {
+      scoresStore.recordResult(`${level.airportId}:${level.shiftId}`, gameStore.planesLanded);
+    }
+  }
+
   // ── Input lock ────────────────────────────────────────────────────────────
 
   const blockKeys = (e: KeyboardEvent) => {
@@ -82,10 +135,19 @@ export function useAppClose() {
   /**
    * Freeze the app while the close runs.
    *
-   * The overlay blocks pointer/touch input at the DOM level; the keyboard
-   * reaches the app through `window`, so it has to be shut down explicitly.
+   * The overlay blocks pointer/touch input at the DOM level, but the Phaser
+   * canvas has its own listeners and the keyboard reaches the game through
+   * `window`, so both have to be shut down explicitly.
    */
   function lockInput(): void {
+    // Stops the Phaser update loop and the music track — the scene 'pause'
+    // event is what AudioSystem listens to.
+    GameCore.active?.pause();
+
+    // Phaser's global input capture (pointer + keyboard on the canvas).
+    const game = GameCore.active?.getPhaserGame();
+    if (game) game.input.enabled = false;
+
     // Swallow every key at the capture phase so nothing reaches the game.
     window.addEventListener('keydown', blockKeys, true);
     window.addEventListener('keyup', blockKeys, true);
@@ -94,6 +156,20 @@ export function useAppClose() {
   function unlockInput(): void {
     window.removeEventListener('keydown', blockKeys, true);
     window.removeEventListener('keyup', blockKeys, true);
+
+    const game = GameCore.active?.getPhaserGame();
+    if (game) game.input.enabled = true;
+  }
+
+  /**
+   * Put the player back in control after a failed close. The Phaser scene
+   * was paused by `lockInput()` but the store never learned about it, so the
+   * store is brought in line: the normal PauseModal reappears and the
+   * player can resume, restart or leave.
+   */
+  function restoreGameAfterFailedClose(): void {
+    if (!gameStore.isPlaying) return;
+    gameStore.pauseGame();
   }
 
   // ── Termination ───────────────────────────────────────────────────────────
@@ -134,10 +210,20 @@ export function useAppClose() {
   async function startClose(): Promise<void> {
     phase.value = 'closing';
     errorText.value = null;
-    statusText.value = 'Closing ATC-APP…';
+    statusText.value = 'Saving your progress…';
     lockInput();
 
     try {
+      recordRunResult();
+      await flushScoresSafely();
+
+      statusText.value = 'Closing ATC-APP…';
+
+      // The device must not keep the play-session claim once the app is
+      // gone: `activity.finish()` never fires appStateChange, so without
+      // this the user's other device stays locked out for the full TTL.
+      sessionGuard.releaseSession();
+
       // MUST come before terminating — Electron's `mainWindow.close()` runs
       // the renderer's `beforeunload`, and a handler that calls
       // `preventDefault()` cancels the close and pops a native dialog.
@@ -165,6 +251,11 @@ export function useAppClose() {
       return;
     }
 
+    if (gameStore.isPlaying || gameStore.isPaused) {
+      phase.value = 'confirm';
+      return;
+    }
+
     await startClose();
   }
 
@@ -179,9 +270,15 @@ export function useAppClose() {
     // A close in flight cannot be cancelled.
     if (phase.value === 'closing') return;
 
+    // Only a FAILED close leaves the game frozen by `lockInput()`. Backing
+    // out of the confirmation must leave the running level exactly as it was.
+    const closeFailed = phase.value === 'error';
+
     phase.value = 'idle';
     errorText.value = null;
     statusText.value = '';
+
+    if (closeFailed) restoreGameAfterFailedClose();
   }
 
   /** The user asked to try the close again after a failure. */

@@ -7,7 +7,10 @@ import { useAppClose } from '@/composables/useAppClose';
 import StripColumn from '@/components/strips/StripColumn.vue';
 import type { ColumnKey } from '@/composables/useStrips';
 import type { IStrip } from '@/pagesData/strips';
+import { gameEventBus } from '@/services/EventBus';
+import { getAirportByIcao, getAirportById } from '@/game/config/airports.config';
 import { useMonetizationStore } from '@/stores/monetization';
+import { useGameStore } from '@/stores/game';
 import { useStripPageTransition } from '@/composables/useStripPageTransition';
 import Paywall from '@/components/monetization/Paywall.vue';
 
@@ -79,11 +82,13 @@ const props = withDefaults(defineProps<Props>(), {
 
 const router = useRouter();
 const route = useRoute();
+const gameStore = useGameStore();
 const monetizationStore = useMonetizationStore();
 const showPaywall = ref(false);
 // `?paywall=restore` (sent by "Switch to another account") opens the paywall at
-// the restore form; `?paywall=open` (sent by the router's premium gate) opens it
-// as is. The query is dropped right away so Back or a reload does not reopen it.
+// the restore form; `?paywall=open` (sent by the router for a locked level or
+// route) opens it as is. The query is dropped right away so Back or a reload
+// does not reopen it.
 const paywallFocus = ref<'restore' | null>(null);
 watch(
   () => route.query.paywall,
@@ -93,6 +98,7 @@ watch(
     showPaywall.value = true;
     const rest = { ...route.query };
     delete rest.paywall;
+    delete rest.lockedLevel;
     void router.replace({ query: rest });
   },
   { immediate: true }
@@ -276,6 +282,49 @@ onUnmounted(() => {
   document.removeEventListener('keydown', handleFirstInteraction);
 });
 
+const handleAirport = (strip: IStrip, _i: number) => {
+  console.log('<<<__handleAirport__strip___', strip);
+
+  void _i;
+  // Gated on the monetization store, not the legacy purchase store: strip
+  // VISIBILITY is driven by `monetizationStore.isPremium` (see stripGoPro), so
+  // gating on a second source of truth lets a premium player tap a paid strip
+  // and be shown the paywall for something they already own.
+  if (strip.type?.isPremium && !monetizationStore.isPremium) {
+    showPaywall.value = true;
+    return;
+  }
+
+  const text = strip.type?.text ?? '';
+  const airport = getAirportByIcao(text) ?? getAirportById(text.toLowerCase());
+  if (airport) {
+    router.push({ name: 'AirportShifts', params: { airportId: airport.id } });
+  }
+};
+
+const playLevel = (strip: IStrip, _i: number) => {
+  void _i;
+  if (strip.type?.isPremium && !monetizationStore.isPremium) {
+    showPaywall.value = true;
+    return;
+  }
+  const levelNumber = strip.type?.levelNumber;
+  if (!levelNumber) return;
+  gameStore.setLevel(levelNumber);
+  gameEventBus.emit('game:init', { levelId: levelNumber });
+  router.push('/play');
+};
+
+const playTrainingLevel = (strip: IStrip, _i: number) => {
+  if (strip.isGrounded) return;
+
+  void _i;
+  const level = Number(strip.type?.levelNumber);
+  if (!level || level < 1) return;
+  gameStore.setTrainingLevel(level);
+  router.push(`/train/${level}`);
+};
+
 const exitPlay = () => void requestClose();
 
 /**
@@ -328,14 +377,17 @@ const onGoPro = () => {
   showPaywall.value = true;
 };
 
-// The Premium account page is not part of this app yet; the paywall covers
-// both buying and restoring.
+// The Premium account page is not part of atc-app; the paywall shows a premium
+// player their credentials and restore options.
 const onPremiumAccount = () => {
   showPaywall.value = true;
 };
 
 const centerHandlers = computed(() => ({
   ...props.handlers,
+  handleAirport,
+  playLevel: props.handlers.playLevel ?? playLevel,
+  playTrainingLevel: props.handlers.playTrainingLevel ?? playTrainingLevel,
   onGoPro,
   onPremiumAccount,
   onStripLanded: (strip: IStrip, i: number) => centerStrips.onStripLanded(i),
