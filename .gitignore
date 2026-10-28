@@ -133,3 +133,7 @@ screenshots/
 
 # Claude Code task worktrees (one per task branch)
 .claude/worktrees/
+
+# Downloaded source data (see db/README.md)
+db/**
+!db/README.md

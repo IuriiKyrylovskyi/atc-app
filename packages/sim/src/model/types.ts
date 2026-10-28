@@ -55,7 +55,7 @@ export interface Runway {
   ils?: { courseTrue: number; glideslopeDeg: number; fafId?: string; tchFt?: number };
 }
 
-export type FixKind = 'waypoint' | 'vor' | 'ndb' | 'dme' | 'rnav';
+export type FixKind = 'waypoint' | 'vor' | 'ndb' | 'dme' | 'rnav' | 'runway' | 'airport';
 
 export interface Fix {
   id: string;
@@ -69,9 +69,12 @@ export interface AltitudeConstraint {
   ft2?: number;
 }
 
-/** ARINC 424 path terminator; the FMS implements them in Phase 4. */
-export type PathTerminator =
-  | 'IF' | 'TF' | 'CF' | 'DF' | 'RF' | 'VA' | 'VM' | 'VI' | 'CA' | 'FA' | 'HM' | 'HA' | 'HF';
+/** ARINC 424 path terminators (all 23); the FMS implements them in Phase 4. */
+export const PATH_TERMINATORS = [
+  'IF', 'TF', 'CF', 'DF', 'FA', 'FC', 'FD', 'FM', 'CA', 'CD', 'CI', 'CR',
+  'RF', 'AF', 'VA', 'VD', 'VI', 'VM', 'VR', 'PI', 'HA', 'HF', 'HM',
+] as const;
+export type PathTerminator = (typeof PATH_TERMINATORS)[number];
 
 export interface Leg {
   type: PathTerminator;
@@ -83,6 +86,18 @@ export interface Leg {
   altitude?: AltitudeConstraint;
   speedKt?: number;
   flyOver?: boolean;
+  /** Required turn direction onto / within the leg. */
+  turn?: TurnDirection;
+  /** Leg / holding distance, NM. */
+  distanceNm?: number;
+  /** Holding leg time, minutes. */
+  holdMinutes?: number;
+  /** Recommended navaid (CF, FD, CD, AF …). */
+  navaid?: string;
+  /** Vertical path angle, degrees (negative = descending). */
+  vpaDeg?: number;
+  /** First leg of the missed approach and everything after it. */
+  missedApproach?: boolean;
 }
 
 export interface Procedure {

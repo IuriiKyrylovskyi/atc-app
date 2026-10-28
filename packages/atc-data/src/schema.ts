@@ -7,7 +7,7 @@
  * compile if the schema and the sim types drift apart.
  */
 import { z } from 'zod';
-import type { AirspacePack } from '@atc-app/sim';
+import { PATH_TERMINATORS, type AirspacePack } from '@atc-app/sim';
 
 const lat = z.number().min(-90).max(90);
 const lon = z.number().min(-180).max(180);
@@ -87,7 +87,7 @@ export const runwaySchema = z
 export const fixSchema = z
   .object({
     id: ident,
-    kind: z.enum(['waypoint', 'vor', 'ndb', 'dme', 'rnav']),
+    kind: z.enum(['waypoint', 'vor', 'ndb', 'dme', 'rnav', 'runway', 'airport']),
     pos: latLonSchema,
   })
   .strict();
@@ -102,7 +102,7 @@ const altitudeConstraintSchema = z
 
 export const legSchema = z
   .object({
-    type: z.enum(['IF', 'TF', 'CF', 'DF', 'RF', 'VA', 'VM', 'VI', 'CA', 'FA', 'HM', 'HA', 'HF']),
+    type: z.enum(PATH_TERMINATORS),
     fix: z.string().optional(),
     courseTrue: course.optional(),
     centre: z.string().optional(),
@@ -110,6 +110,12 @@ export const legSchema = z
     altitude: altitudeConstraintSchema.optional(),
     speedKt: z.number().positive().optional(),
     flyOver: z.boolean().optional(),
+    turn: z.enum(['left', 'right']).optional(),
+    distanceNm: z.number().nonnegative().optional(),
+    holdMinutes: z.number().positive().optional(),
+    navaid: z.string().optional(),
+    vpaDeg: z.number().min(-10).max(10).optional(),
+    missedApproach: z.boolean().optional(),
   })
   .strict();
 

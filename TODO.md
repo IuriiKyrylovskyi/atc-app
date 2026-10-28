@@ -57,7 +57,9 @@ the defaults below; the open items are only about paid upgrades or permissions.
 ## Phase 1 — US data + scope MVP + text commands
 
 - [x] Importer: OurAirports (airports + both runway directions, displaced thresholds, filters)
-- [ ] Importers: FAA CIFP (ARINC 424), NASR → `AirspacePack`
+- [x] Importer: FAA CIFP (ARINC 424) — airports, runways + ILS, waypoints, navaids, airways, SID/STAR/IAP legs (all 23 path terminators); `pnpm data:cifp` fetches the AIRAC file into `db/`
+- [ ] CIFP: controlled / restrictive airspace (UC / UR boundaries with arcs), MSA, holds (EP)
+- [ ] Importer: FAA NASR (frequencies, airspace classes, MVA charts)
 - [ ] Pack builder CLI `pnpm pack:build <id>` with AIRAC version, source/licence metadata
 - [x] Pack validation: schema, publishable licences, unique ids, runway length/heading geometry, references, areas
 - [ ] Pack validation: ≤ 10 m check against a second source, diff vs. previous AIRAC
