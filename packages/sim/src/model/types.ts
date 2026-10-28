@@ -152,7 +152,18 @@ export type Clearance =
   | { kind: 'speed'; casKt?: number; mach?: number }
   | { kind: 'direct'; fix: string }
   | { kind: 'squawk'; code: string }
-  | { kind: 'resume_own_navigation' };
+  | { kind: 'resume_own_navigation' }
+  /** Cleared for the ILS: intercept the localizer from the current vector, then the glideslope. */
+  | { kind: 'approach'; type: 'ILS'; airport: string; runway: string };
+
+/** An approach clearance being flown. */
+export interface ApproachState {
+  type: 'ILS';
+  airport: string;
+  runway: string;
+  /** armed = cleared, not yet on the localizer; localizer = established; glideslope = descending on it. */
+  phase: 'armed' | 'localizer' | 'glideslope';
+}
 
 export interface Message {
   to: string;
@@ -180,6 +191,8 @@ export interface AircraftTargets {
    * Vectors keep it, so "resume own navigation" can rejoin it.
    */
   route: string[];
+  /** Approach clearance, if any. */
+  approach?: ApproachState;
 }
 
 export interface AircraftState {
@@ -232,6 +245,10 @@ export type SimEvent =
   | { t: number; type: 'message_rejected'; message: Message; reason: string }
   | { t: number; type: 'fix_reached'; callsign: string; fix: string }
   | { t: number; type: 'route_ended'; callsign: string; fix: string }
+  | { t: number; type: 'localizer_captured'; callsign: string; runway: string }
+  | { t: number; type: 'glideslope_captured'; callsign: string; runway: string }
+  | { t: number; type: 'landed'; callsign: string; airport: string; runway: string }
+  | { t: number; type: 'missed_approach'; callsign: string; airport: string; runway: string; reason: string }
   /** STCA: loss of separation predicted within `inS` s (0 = already lost). */
   | { t: number; type: 'conflict_alert'; a: string; b: string; inS: number }
   | { t: number; type: 'separation_lost'; a: string; b: string; lateralNm: number; verticalFt: number }

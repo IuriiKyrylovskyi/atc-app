@@ -7,6 +7,7 @@ import {
   parseCommand,
   radioCallsign,
   readback,
+  runwayPhrase,
   spell,
   unable,
   type CommandContext,
@@ -21,7 +22,7 @@ const aircraft = (over: Partial<AircraftState> = {}): AircraftState => ({
 });
 
 const states: Record<string, AircraftState> = {
-  DAL1192: aircraft(),
+  DAL1192: aircraft({ destination: 'KJFK' }),
   UAL1771: aircraft({ callsign: 'UAL1771', altFt: 8000 }),
   AAL2412: aircraft({ callsign: 'AAL2412' }),
   N12ABC: aircraft({ callsign: 'N12ABC', altFt: 3000, casKt: 110 }),
@@ -30,6 +31,7 @@ const ctx: CommandContext = {
   callsigns: Object.keys(states),
   hasFix: (id) => ['CAMRN', 'KARRS'].includes(id),
   aircraft: (cs) => states[cs],
+  hasIls: (airport, runway) => (airport === 'KJFK' && ['04R', '13L'].includes(runway)) || (airport === 'KEWR' && runway === '22L'),
 };
 const clearances = (input: string, c: CommandContext = ctx) => {
   const r = parseCommand(input, c);
@@ -107,6 +109,22 @@ describe('command line', () => {
     expect(error('DAL1192 FL190 A080')).toBe('Two vertical instructions in one message');
   });
 
+  it('parses ILS clearances, alone or with a vector and a level', () => {
+    const ils = (runway: string, airport = 'KJFK') => ({ kind: 'approach', type: 'ILS', airport, runway });
+    expect(clearances('DAL1192 ILS 04R')).toEqual([ils('04R')]);
+    expect(clearances('DAL1192 ILS 4R')).toEqual([ils('04R')]);
+    expect(clearances('UAL1771 ILS KEWR 22L')).toEqual([ils('22L', 'KEWR')]);
+    expect(clearances('DAL1192 L220 A030 ILS 13L')).toEqual([
+      { kind: 'heading', headingMag: 220, turn: 'left' },
+      { kind: 'altitude', altFt: 3000 },
+      ils('13L'),
+    ]);
+    expect(error('UAL1771 ILS 22L')).toBe('No destination known: use ILS <airport> <runway>');
+    expect(error('DAL1192 ILS 31R')).toBe('No ILS for KJFK runway 31R');
+    expect(error('DAL1192 ILS')).toBe('ILS needs a runway, e.g. ILS 04R');
+    expect(error('DAL1192 ILS 04R ILS 13L')).toBe('Two approach instructions in one message');
+  });
+
   it('checks climb / descend against the current level', () => {
     expect(error('DAL1192 C120')).toBe('DAL1192 is at 160: climb to 120?');
     expect(error('UAL1771 D120')).toBe('UAL1771 is at 80: descend to 120?');
@@ -150,6 +168,23 @@ describe('phraseology', () => {
     expect(rb.spoken).toBe(
       'descend and maintain eight thousand, turn left heading zero four zero, reduce speed to two five zero, Delta one one niner two'
     );
+  });
+
+  it('says approach clearances and runways', () => {
+    const msg: Message = {
+      to: 'DAL1192',
+      clearances: [
+        { kind: 'heading', headingMag: 220, turn: 'left' },
+        { kind: 'altitude', altFt: 3000 },
+        { kind: 'approach', type: 'ILS', airport: 'KJFK', runway: '04R' },
+      ],
+    };
+    const rb = readback(msg, states.DAL1192);
+    expect(rb.text).toBe('Turn left heading 220, descend and maintain 3000, cleared ILS runway 04R approach, Delta 1192');
+    expect(rb.spoken).toContain('cleared I L S runway four right approach');
+    expect(runwayPhrase('13L').spoken).toBe('one three left');
+    expect(runwayPhrase('22C').spoken).toBe('two two center');
+    expect(runwayPhrase('09').spoken).toBe('niner');
   });
 
   it('picks the verb from the aircraft state', () => {

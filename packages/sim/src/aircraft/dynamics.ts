@@ -3,14 +3,24 @@
  *
  * Phase 0 scope: heading hold and turns (standard rate, bank-limited), direct-to a
  * fix with wind correction, climb/descent to a target altitude, speed changes with
- * accel/decel limits, 250 kt below 10 000 ft, uniform wind. Procedures (ARINC 424
- * legs), VNAV and approaches arrive with the FMS in Phase 4.
+ * accel/decel limits, 250 kt below 10 000 ft, uniform wind, ILS approaches
+ * (localizer / glideslope, see approach.ts). Procedures (ARINC 424 legs) and VNAV
+ * arrive with the FMS in Phase 4.
  */
 import { casToMach, machToCas, casToTas } from '../atmo/isa';
 import { courseTo, destination, distanceM, type LatLon } from '../geo/geodesy';
 import { angleDiffDeg, DEG, G0, MS_PER_KT, normDeg } from '../units';
-import type { AircraftState } from '../model/types';
+import type { AircraftState, Runway } from '../model/types';
 import type { PerformanceProfile } from './performance';
+import {
+  capturesLocalizer,
+  FINAL_SPEED_KT,
+  FINAL_SPEED_UNTIL_NM,
+  LANDING_GATE_FT,
+  localizerGeometry,
+  localizerTrack,
+  type LocalizerGeometry,
+} from './approach';
 
 /** Standard rate turn, °/s. */
 export const STANDARD_RATE_DEG_S = 3;
@@ -31,12 +41,19 @@ export interface StepEnv {
   perf: PerformanceProfile;
   wind: Wind;
   fixPos(id: string): LatLon | undefined;
+  runway?(airport: string, id: string): Runway | undefined;
 }
 
 export interface StepResult {
   fixReached?: string;
   /** The reached fix was the last one of the route. */
   routeEnded?: boolean;
+  localizerCaptured?: boolean;
+  glideslopeCaptured?: boolean;
+  /** Crossed the threshold low enough: the aircraft has landed. */
+  landed?: boolean;
+  /** Crossed the threshold without a stable approach. */
+  missed?: string;
 }
 
 function approach(current: number, target: number, maxStep: number): number {
@@ -73,6 +90,34 @@ export function stepAircraft(ac: AircraftState, env: StepEnv): StepResult {
   const result: StepResult = {};
   const t = ac.target;
 
+  // ── Approach: where the aircraft is relative to the ILS ──────────────────
+  const rwy = t.approach && env.runway ? env.runway(t.approach.airport, t.approach.runway) : undefined;
+  const loc: LocalizerGeometry | undefined = rwy ? localizerGeometry(ac.pos, rwy) : undefined;
+  if (t.approach && rwy && loc) {
+    if (t.approach.phase === 'armed' && capturesLocalizer(ac.trackTrue, ac.tasKt, turnRateDegS(ac.tasKt, perf.maxBankDeg), rwy, loc)) {
+      t.approach.phase = 'localizer';
+      t.directFix = null;
+      t.headingTrue = null;
+      t.turn = null;
+      result.localizerCaptured = true;
+    }
+    if (t.approach.phase === 'localizer' && ac.altFt >= loc.glideslopeFt - 50) {
+      t.approach.phase = 'glideslope';
+      result.glideslopeCaptured = true;
+    }
+    if (t.approach.phase === 'glideslope') {
+      // Pilots slow down on final: 180 kt, then final approach speed inside 5 NM.
+      t.mach = null;
+      t.casKt = loc.alongNm <= FINAL_SPEED_UNTIL_NM ? perf.approachKt : Math.min(t.casKt, FINAL_SPEED_KT);
+    }
+    if (t.approach.phase !== 'armed' && loc.alongNm <= 0) {
+      if (t.approach.phase === 'glideslope' && ac.altFt - rwy.thresholdElevFt <= LANDING_GATE_FT) result.landed = true;
+      else result.missed = t.approach.phase === 'glideslope' ? 'too high over the threshold' : 'not on the glideslope';
+      return result;
+    }
+  }
+  const established = t.approach !== undefined && t.approach.phase !== 'armed' && rwy !== undefined && loc !== undefined;
+
   // ── Speed ────────────────────────────────────────────────────────────────
   let targetCas = t.mach !== null ? machToCas(t.mach, ac.altFt) : t.casKt;
   if (ac.altFt < SPEED_LIMIT_ALT_FT) targetCas = Math.min(targetCas, SPEED_LIMIT_KT);
@@ -84,7 +129,9 @@ export function stepAircraft(ac: AircraftState, env: StepEnv): StepResult {
 
   // ── Lateral ──────────────────────────────────────────────────────────────
   let desiredHeading: number | null = t.headingTrue;
-  if (t.directFix) {
+  if (established) {
+    desiredHeading = headingForTrack(localizerTrack(rwy!, loc!.crossNm), ac.tasKt, wind);
+  } else if (t.directFix) {
     const fix = env.fixPos(t.directFix);
     if (fix) {
       if (distanceM(ac.pos, fix) <= Math.max(FIX_CAPTURE_M, ac.gsKt * MS_PER_KT * dt)) {
@@ -122,7 +169,14 @@ export function stepAircraft(ac: AircraftState, env: StepEnv): StepResult {
 
   // ── Vertical ─────────────────────────────────────────────────────────────
   const dAlt = t.altFt - ac.altFt;
-  if (dAlt === 0) {
+  if (t.approach?.phase === 'glideslope' && loc) {
+    // Ride the glideslope down; never climb back to it, never below the threshold.
+    const onSlope = Math.max(loc.glideslopeFt, rwy!.thresholdElevFt);
+    const next = onSlope < ac.altFt ? approach(ac.altFt, onSlope, (Math.max(perf.descentFpm, 1500) / 60) * dt) : ac.altFt;
+    ac.vsFpm = ((next - ac.altFt) / dt) * 60;
+    ac.altFt = next;
+    t.altFt = Math.round(next);
+  } else if (dAlt === 0) {
     ac.vsFpm = 0;
   } else {
     const nominal =

@@ -147,6 +147,26 @@ describe.skipIf(!nyFile)('NY arrivals on the built ny-tma pack', () => {
   });
 });
 
+describe.skipIf(!nyFile)('ILS on the built ny-tma pack', () => {
+  const ny = nyFile ? (JSON.parse(readFileSync(distDir + nyFile, 'utf8')) as AirspacePack) : null;
+
+  it.each([['04R'], ['22R'], ['13L']])('vectors onto KJFK %s, intercepts and lands', (runway) => {
+    const rwy = ny!.runways.find((r) => r.airport === 'KJFK' && r.id === runway)!;
+    const course = rwy.ils!.courseTrue;
+    // 14 NM out on final, 3 NM right of course, heading 30° towards the centreline at 3000 ft.
+    const onFinal = destination(rwy.threshold, course + 180, 14 * 1852);
+    const start = destination(onFinal, course + 90, 3 * 1852);
+    const sim = new Simulation({ seed: 1, pack: ny!, pilotDelayS: [0, 0] });
+    sim.addAircraft({ callsign: 'TST1', icaoType: 'A320', pos: start, altFt: 3000, headingTrue: course - 30, casKt: 200, destination: 'KJFK' });
+    sim.issue({ to: 'TST1', clearances: [{ kind: 'approach', type: 'ILS', airport: 'KJFK', runway }] });
+    sim.advance(900);
+    const types = sim.eventLog.map((e) => e.type);
+    expect(types).toContain('localizer_captured');
+    expect(types).toContain('glideslope_captured');
+    expect(sim.eventLog.find((e) => e.type === 'landed')).toMatchObject({ callsign: 'TST1', runway });
+  });
+});
+
 describe('flightOnRoute', () => {
   it('spawns over the from-fix heading for the first route fix', () => {
     const s = flightOnRoute(pack, {

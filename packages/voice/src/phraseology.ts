@@ -25,6 +25,15 @@ const US_TRANSITION_ALTITUDE_FT = 18_000;
 
 const pad3 = (n: number) => String(Math.round(n)).padStart(3, '0');
 
+const SIDE: Readonly<Record<string, string>> = { L: 'left', R: 'right', C: 'center' };
+
+/** "04R" / "four right" (FAA: no leading zero, digits one by one). */
+export function runwayPhrase(runway: string): Phrase {
+  const m = /^0?(\d{1,2})([LRC]?)$/.exec(runway);
+  if (!m) return { text: runway, spoken: runway };
+  return { text: runway, spoken: [spell(m[1]!), SIDE[m[2]!]].filter(Boolean).join(' ') };
+}
+
 /** "FL190" / "flight level one niner zero"; "8000" / "eight thousand". */
 export function altitudePhrase(ft: number, opts: PhraseOptions = {}): Phrase {
   const ta = opts.transitionAltitudeFt ?? US_TRANSITION_ALTITUDE_FT;
@@ -75,6 +84,10 @@ export function clearancePhrase(c: Clearance, ac?: AircraftState, opts: PhraseOp
       return { text: `squawk ${c.code}`, spoken: `squawk ${spell(c.code)}` };
     case 'resume_own_navigation':
       return { text: 'resume own navigation', spoken: 'resume own navigation' };
+    case 'approach': {
+      const rwy = runwayPhrase(c.runway);
+      return { text: `cleared ${c.type} runway ${rwy.text} approach`, spoken: `cleared I L S runway ${rwy.spoken} approach` };
+    }
   }
 }
 

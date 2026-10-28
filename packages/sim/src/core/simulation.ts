@@ -30,6 +30,7 @@ import {
 } from '../safety/separation';
 import type {
   AircraftSpawn,
+  Runway,
   Conflict,
   AircraftState,
   AirspacePack,
@@ -100,6 +101,7 @@ export class Simulation {
   private state: SimState;
   private rng: Rng;
   private readonly fixes = new Map<string, LatLon>();
+  private readonly runways = new Map<string, Runway>();
 
   constructor(config: SimConfig, state?: SimState) {
     this.config = {
@@ -112,6 +114,7 @@ export class Simulation {
       separation: { ...TERMINAL_SEPARATION, ...config.separation },
     };
     for (const f of config.pack?.fixes ?? []) this.fixes.set(f.id, f.pos);
+    for (const r of config.pack?.runways ?? []) this.runways.set(`${r.airport}|${r.id}`, r);
     this.state = state
       ? clone(state)
       : {
@@ -154,19 +157,34 @@ export class Simulation {
   private tick(): void {
     const dt = this.config.stepS;
     this.applyDueMessages();
+    const landed: AircraftState[] = [];
     for (const ac of this.state.aircraft) {
+      const approach = ac.target.approach;
       const res = stepAircraft(ac, {
         dtS: dt,
         perf: performanceFor(ac.icaoType, ac.wake),
         wind: this.config.wind,
         fixPos: (id) => this.fixes.get(id),
+        runway: (airport, id) => this.runways.get(`${airport}|${id}`),
       });
+      const at = this.time + dt;
+      if (approach) {
+        if (res.localizerCaptured) this.log({ t: at, type: 'localizer_captured', callsign: ac.callsign, runway: approach.runway });
+        if (res.glideslopeCaptured) this.log({ t: at, type: 'glideslope_captured', callsign: ac.callsign, runway: approach.runway });
+        if (res.landed) landed.push(ac);
+        if (res.missed) this.goAround(ac, res.missed, at);
+      }
       if (res.fixReached) {
         this.log({ t: this.time + dt, type: 'fix_reached', callsign: ac.callsign, fix: res.fixReached });
         if (res.routeEnded) this.log({ t: this.time + dt, type: 'route_ended', callsign: ac.callsign, fix: res.fixReached });
       }
     }
     this.state.step += 1;
+    for (const ac of landed) {
+      const a = ac.target.approach!;
+      this.log({ t: this.time, type: 'landed', callsign: ac.callsign, airport: a.airport, runway: a.runway });
+      this.removeAircraft(ac.callsign);
+    }
     // After the step, so an aircraft scheduled at t is on the scope at t.
     this.spawnDue();
     if (this.state.step % Math.max(1, Math.round(1 / dt)) === 0) this.monitorSeparation();
@@ -227,6 +245,21 @@ export class Simulation {
       const { spawn } = this.state.scheduled.shift()!;
       this.addAircraft(spawn);
     }
+  }
+
+  /** Missed approach: climb straight ahead on the runway course to 3 000 ft (or 2 000 ft above the field). */
+  private goAround(ac: AircraftState, reason: string, at: number): void {
+    const a = ac.target.approach!;
+    const rwy = this.runways.get(`${a.airport}|${a.runway}`);
+    const t = ac.target;
+    delete t.approach;
+    t.altFt = Math.max(3000, Math.ceil(((rwy?.thresholdElevFt ?? 0) + 2000) / 100) * 100);
+    t.vsFpm = null;
+    t.headingTrue = rwy?.ils?.courseTrue ?? rwy?.headingTrue ?? ac.headingTrue;
+    t.turn = null;
+    t.directFix = null;
+    t.casKt = 180;
+    this.log({ t: at, type: 'missed_approach', callsign: ac.callsign, airport: a.airport, runway: a.runway, reason });
   }
 
   removeAircraft(callsign: string): void {
@@ -348,7 +381,12 @@ export class Simulation {
     for (const { message } of due) {
       const ac = this.find(message.to);
       if (!ac) continue;
-      for (const c of message.clearances) this.applyClearance(ac, c);
+      // "Turn left heading 220, maintain 3000 until established, cleared ILS": the vector and
+      // the level come first, the approach clearance last (it must not be cancelled by them).
+      const ordered = [...message.clearances].sort(
+        (x, y) => Number(x.kind === 'approach') - Number(y.kind === 'approach')
+      );
+      for (const c of ordered) this.applyClearance(ac, c);
     }
   }
 
@@ -361,6 +399,8 @@ export class Simulation {
     switch (c.kind) {
       case 'altitude':
         if (c.altFt < 0 || c.altFt > perf.ceilingFt) return reject('altitude outside performance');
+        // A new level breaks off the glideslope (before that it is "maintain … until established").
+        if (t.approach?.phase === 'glideslope') delete t.approach;
         t.altFt = c.altFt;
         t.vsFpm = c.vsFpm ?? null;
         break;
@@ -398,6 +438,7 @@ export class Simulation {
         t.directFix = c.fix;
         t.headingTrue = null;
         t.turn = null;
+        delete t.approach;
         break;
       case 'squawk':
         if (!/^[0-7]{4}$/.test(c.code)) return reject('invalid squawk');
@@ -410,7 +451,15 @@ export class Simulation {
         t.directFix = t.route.shift()!;
         t.headingTrue = null;
         t.turn = null;
+        delete t.approach;
         break;
+      case 'approach': {
+        const rwy = this.runways.get(`${c.airport}|${c.runway}`);
+        if (!rwy) return reject(`no runway ${c.runway} at ${c.airport}`);
+        if (!rwy.ils) return reject(`no ILS for runway ${c.runway}`);
+        t.approach = { type: c.type, airport: c.airport, runway: c.runway, phase: 'armed' };
+        break;
+      }
     }
     this.log({ t: this.time, type: 'clearance_applied', callsign: ac.callsign, clearance: c });
   }
@@ -439,10 +488,11 @@ export class Simulation {
     return clone(this.state);
   }
 
-  /** Vectors: stop navigating, but keep the route so the aircraft can resume it. */
+  /** Vectors: stop navigating (and flying any approach), but keep the route so the aircraft can resume it. */
   private leaveRoute(t: AircraftState['target']): void {
     if (t.directFix) t.route.unshift(t.directFix);
     t.directFix = null;
+    delete t.approach;
   }
 
   private find(callsign: string): AircraftState | undefined {

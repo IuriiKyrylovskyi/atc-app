@@ -11,7 +11,9 @@ import {
   SimClient,
   Simulation,
   turnRateDegS,
+  localizerGeometry,
   type AircraftState,
+  type Runway,
   type AirspacePack,
   type SimConfig,
 } from '../src';
@@ -366,5 +368,106 @@ describe('separation monitor / STCA', () => {
     sim.removeAircraft('BBB2');
     expect(sim.snapshot().conflicts).toEqual([]);
     expect(sim.eventLog.slice(-2).map((e) => e.type)).toEqual(['separation_restored', 'conflict_ended']);
+  });
+});
+
+describe('ILS approach', () => {
+  const NM = 1852;
+  // Runway 36 with its threshold at the origin: the final approach lies to the south.
+  const rwy36: Runway = {
+    id: '36', airport: 'KTST', threshold: ORIGIN, end: destination(ORIGIN, 0, 3000), headingTrue: 0,
+    lengthM: 3000, widthM: 45, thresholdElevFt: 0, ils: { courseTrue: 0, glideslopeDeg: 3, tchFt: 50 },
+  };
+  const rwy18: Runway = { ...rwy36, id: '18', threshold: rwy36.end, end: ORIGIN, headingTrue: 180, ils: undefined };
+  const ilsPack: AirspacePack = { ...pack, runways: [rwy36, rwy18] };
+  const cfg: SimConfig = { seed: 3, pack: ilsPack, pilotDelayS: [0, 0] };
+  const south = (nm: number, eastNm = 0) => destination(destination(ORIGIN, 180, nm * NM), 90, eastNm * NM);
+  const cleared = { kind: 'approach', type: 'ILS', airport: 'KTST', runway: '36' } as const;
+  const ofType = (sim: Simulation, type: string) => sim.eventLog.filter((e) => e.type === type);
+
+  it('measures distance to go, offset and glideslope height', () => {
+    const g = localizerGeometry(south(10, 1), rwy36);
+    expect(g.alongNm).toBeCloseTo(10, 2);
+    expect(g.crossNm).toBeCloseTo(1, 2); // east of a northbound final = right of course
+    // 50 ft TCH + 10 NM × 6076 ft × tan 3° ≈ 3234 ft
+    expect(g.glideslopeFt).toBeCloseTo(3234, -1);
+    expect(localizerGeometry(destination(ORIGIN, 0, 2 * NM), rwy36).alongNm).toBeLessThan(0);
+  });
+
+  it.each([
+    ['right of course, heading 300', 4, 300],
+    ['left of course, heading 060', -4, 60],
+  ])('intercepts from the %s, rides the glideslope and lands', (_, eastNm, hdg) => {
+    const sim = new Simulation(cfg);
+    sim.addAircraft({ callsign: 'ILS1', icaoType: 'A320', pos: south(15, eastNm), altFt: 2000, headingTrue: hdg, casKt: 180 });
+    sim.issue({ to: 'ILS1', clearances: [cleared] });
+    let maxOvershoot = 0;
+    for (let s = 0; s < 900 && sim.getAircraft('ILS1'); s += 5) {
+      sim.advance(5);
+      const ac = sim.getAircraft('ILS1');
+      if (ac?.target.approach?.phase !== 'armed' && ac) {
+        // Crossing to the other side of the centreline after capture = overshoot.
+        const cross = localizerGeometry(ac.pos, rwy36).crossNm;
+        if (Math.sign(cross) === -Math.sign(eastNm)) maxOvershoot = Math.max(maxOvershoot, Math.abs(cross));
+      }
+    }
+    const types = sim.eventLog.map((e) => e.type);
+    expect(types.indexOf('localizer_captured')).toBeLessThan(types.indexOf('glideslope_captured'));
+    expect(ofType(sim, 'landed')).toEqual([expect.objectContaining({ callsign: 'ILS1', airport: 'KTST', runway: '36' })]);
+    expect(sim.getAircraft('ILS1')).toBeUndefined();
+    expect(maxOvershoot).toBeLessThan(0.3);
+    // Glideslope picked up from below at 2000 ft: ~6 NM out.
+    const gs = ofType(sim, 'glideslope_captured')[0]!;
+    const loc = ofType(sim, 'localizer_captured')[0]!;
+    expect(gs.t).toBeGreaterThan(loc.t);
+  });
+
+  it('slows to 180 kt on the glideslope and to final approach speed inside 5 NM', () => {
+    const sim = new Simulation(cfg);
+    sim.addAircraft({ callsign: 'SPD1', icaoType: 'A320', pos: south(12), altFt: 3700, headingTrue: 0, casKt: 250 });
+    sim.issue({ to: 'SPD1', clearances: [cleared] });
+    sim.advance(60);
+    expect(sim.getAircraft('SPD1')!.target.casKt).toBe(180);
+    while (localizerGeometry(sim.getAircraft('SPD1')!.pos, rwy36).alongNm > 4) sim.advance(5);
+    expect(sim.getAircraft('SPD1')!.target.casKt).toBe(140);
+  });
+
+  it('goes around when too high over the threshold', () => {
+    const sim = new Simulation(cfg);
+    sim.addAircraft({ callsign: 'HI1', icaoType: 'A320', pos: south(6), altFt: 9000, headingTrue: 0, casKt: 180 });
+    sim.issue({ to: 'HI1', clearances: [cleared] });
+    sim.advance(400);
+    expect(ofType(sim, 'landed')).toHaveLength(0);
+    expect(ofType(sim, 'missed_approach')).toEqual([
+      expect.objectContaining({ callsign: 'HI1', reason: 'too high over the threshold' }),
+    ]);
+    const ac = sim.getAircraft('HI1')!;
+    expect(ac.target.approach).toBeUndefined();
+    expect(ac.target.altFt).toBe(3000);
+    expect(ac.target.headingTrue).toBe(0);
+  });
+
+  it('keeps the approach when the vector comes in the same message, cancels it on a later vector', () => {
+    const sim = new Simulation(cfg);
+    sim.addAircraft({ callsign: 'VEC1', icaoType: 'A320', pos: south(20, 6), altFt: 4000, headingTrue: 0, casKt: 200 });
+    // Approach listed first: still applied after the heading.
+    sim.issue({ to: 'VEC1', clearances: [cleared, { kind: 'heading', headingMag: 330 }, { kind: 'altitude', altFt: 3000 }] });
+    sim.advance(1);
+    expect(sim.getAircraft('VEC1')!.target.approach).toMatchObject({ runway: '36', phase: 'armed' });
+    sim.issue({ to: 'VEC1', clearances: [{ kind: 'heading', headingMag: 90 }] });
+    sim.advance(1);
+    expect(sim.getAircraft('VEC1')!.target.approach).toBeUndefined();
+  });
+
+  it('rejects runways without an ILS or unknown runways', () => {
+    const sim = new Simulation(cfg);
+    sim.addAircraft({ callsign: 'NO1', icaoType: 'A320', pos: south(10), altFt: 3000, headingTrue: 0, casKt: 180 });
+    sim.issue({ to: 'NO1', clearances: [{ ...cleared, runway: '18' }] });
+    sim.issue({ to: 'NO1', clearances: [{ ...cleared, runway: '09' }] });
+    sim.advance(1);
+    expect(ofType(sim, 'clearance_rejected').map((e) => (e.type === 'clearance_rejected' ? e.reason : ''))).toEqual([
+      'no ILS for runway 18',
+      'no runway 09 at KTST',
+    ]);
   });
 });

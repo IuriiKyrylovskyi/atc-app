@@ -27,24 +27,26 @@ export interface PerformanceProfile {
   maxCasKt: number;
   maxMach: number;
   ceilingFt: number;
+  /** Final approach speed (Vapp), kt CAS. */
+  approachKt: number;
 }
 
 const GENERIC: Record<WakeCategory, PerformanceProfile> = {
   L: {
     climbFpmLow: 900, climbFpmHigh: 600, descentFpm: 800, accelKtPerS: 1.0, decelKtPerS: 1.0,
-    maxBankDeg: 30, minCasKt: 70, maxCasKt: 200, maxMach: 0.5, ceilingFt: 25_000,
+    maxBankDeg: 30, minCasKt: 70, maxCasKt: 200, maxMach: 0.5, ceilingFt: 25_000, approachKt: 90,
   },
   M: {
     climbFpmLow: 2500, climbFpmHigh: 1500, descentFpm: 2000, accelKtPerS: 1.2, decelKtPerS: 0.8,
-    maxBankDeg: 25, minCasKt: 130, maxCasKt: 340, maxMach: 0.82, ceilingFt: 41_000,
+    maxBankDeg: 25, minCasKt: 130, maxCasKt: 340, maxMach: 0.82, ceilingFt: 41_000, approachKt: 140,
   },
   H: {
     climbFpmLow: 2000, climbFpmHigh: 1200, descentFpm: 2000, accelKtPerS: 1.0, decelKtPerS: 0.7,
-    maxBankDeg: 25, minCasKt: 140, maxCasKt: 340, maxMach: 0.86, ceilingFt: 43_000,
+    maxBankDeg: 25, minCasKt: 140, maxCasKt: 340, maxMach: 0.86, ceilingFt: 43_000, approachKt: 150,
   },
   J: {
     climbFpmLow: 1800, climbFpmHigh: 1000, descentFpm: 1800, accelKtPerS: 0.9, decelKtPerS: 0.6,
-    maxBankDeg: 25, minCasKt: 150, maxCasKt: 340, maxMach: 0.87, ceilingFt: 43_000,
+    maxBankDeg: 25, minCasKt: 150, maxCasKt: 340, maxMach: 0.87, ceilingFt: 43_000, approachKt: 155,
   },
 };
 
