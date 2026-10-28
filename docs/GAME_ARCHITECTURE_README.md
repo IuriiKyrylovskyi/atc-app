@@ -1,5 +1,9 @@
 # 🎮 ATC-APP — Game Architecture Guide
 
+> ⚠️ This describes the arcade engine inherited from skymess. The target ATC
+> simulator architecture and its implementation plan are in
+> [`ATC_ARCHITECTURE.md`](../ATC_ARCHITECTURE.md).
+
 > Technical reference for the Phaser 3 game layer: scenes, objects, systems, and event flow.
 
 ---
