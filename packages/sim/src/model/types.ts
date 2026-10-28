@@ -175,6 +175,11 @@ export interface AircraftTargets {
   mach: number | null;
   vsFpm: number | null;
   directFix: string | null;
+  /**
+   * Fixes still to fly after `directFix`, in order (a STAR or a cleared route).
+   * Vectors keep it, so "resume own navigation" can rejoin it.
+   */
+  route: string[];
 }
 
 export interface AircraftState {
@@ -192,6 +197,8 @@ export interface AircraftState {
   gsKt: number;
   mach: number;
   vsFpm: number;
+  /** Destination airport (ICAO), shown in the data block when known. */
+  destination?: string;
   target: AircraftTargets;
 }
 
@@ -206,6 +213,12 @@ export interface AircraftSpawn {
   altFt: number;
   headingTrue: number;
   casKt: number;
+  /** Fixes to fly in order; the aircraft turns direct to the first one. */
+  route?: string[];
+  /** Cleared altitude / speed if different from the current ones (e.g. descending on arrival). */
+  clearedAltFt?: number;
+  clearedCasKt?: number;
+  destination?: string;
 }
 
 // ─── Events, snapshots ───────────────────────────────────────────────────────
@@ -217,7 +230,8 @@ export type SimEvent =
   | { t: number; type: 'clearance_applied'; callsign: string; clearance: Clearance }
   | { t: number; type: 'clearance_rejected'; callsign: string; clearance: Clearance; reason: string }
   | { t: number; type: 'message_rejected'; message: Message; reason: string }
-  | { t: number; type: 'fix_reached'; callsign: string; fix: string };
+  | { t: number; type: 'fix_reached'; callsign: string; fix: string }
+  | { t: number; type: 'route_ended'; callsign: string; fix: string };
 
 /** What the scope receives every radar sweep. */
 export interface Snapshot {

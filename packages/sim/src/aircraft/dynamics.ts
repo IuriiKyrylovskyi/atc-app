@@ -35,6 +35,8 @@ export interface StepEnv {
 
 export interface StepResult {
   fixReached?: string;
+  /** The reached fix was the last one of the route. */
+  routeEnded?: boolean;
 }
 
 function approach(current: number, target: number, maxStep: number): number {
@@ -86,11 +88,20 @@ export function stepAircraft(ac: AircraftState, env: StepEnv): StepResult {
     const fix = env.fixPos(t.directFix);
     if (fix) {
       if (distanceM(ac.pos, fix) <= Math.max(FIX_CAPTURE_M, ac.gsKt * MS_PER_KT * dt)) {
-        // Reached: keep flying the current heading until the next clearance.
         result.fixReached = t.directFix;
-        t.directFix = null;
-        t.headingTrue = ac.headingTrue;
-        desiredHeading = ac.headingTrue;
+        const next = t.route.length > 0 ? env.fixPos(t.route[0]!) : undefined;
+        if (next) {
+          // Sequence to the next route fix (no turn anticipation until the FMS, Phase 4).
+          t.directFix = t.route.shift()!;
+          desiredHeading = headingForTrack(courseTo(ac.pos, next), ac.tasKt, wind);
+        } else {
+          // End of route: keep flying the current heading until the next clearance.
+          result.routeEnded = true;
+          t.directFix = null;
+          t.route = [];
+          t.headingTrue = ac.headingTrue;
+          desiredHeading = ac.headingTrue;
+        }
       } else {
         desiredHeading = headingForTrack(courseTo(ac.pos, fix), ac.tasKt, wind);
       }

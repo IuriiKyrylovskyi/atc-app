@@ -1,22 +1,35 @@
 <script setup lang="ts">
 /**
- * Radar scope (Phase 1 MVP): draws an airspace pack's video map — airways,
- * fixes, navaids, runways, ILS extended centrelines, range rings — with pan,
- * zoom, range presets and layer toggles. Traffic and commands come next.
+ * Radar scope: draws an airspace pack's video map — airways, fixes, navaids,
+ * runways, ILS extended centrelines, range rings — and the traffic of a scripted
+ * scenario run by the sim in a Web Worker: targets, history dots, speed vectors
+ * and full data blocks, updated once per radar sweep. Commands come next.
+ *
+ * `?scenario=<id>` picks a scenario (default: the first one for the pack),
+ * `?scenario=none` shows the map only.
  */
 import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { courseTo, distanceNm, normDeg, type LatLon } from '@atc-app/sim';
+import { courseTo, distanceNm, normDeg, type AircraftState, type LatLon, type Snapshot } from '@atc-app/sim';
 import {
   buildVideoMap,
   DEFAULT_LAYERS,
+  DEFAULT_TRAFFIC_OPTIONS,
+  hitTest,
+  magneticHeading,
   RANGE_PRESETS_NM,
   ScopeRenderer,
   ScopeView,
+  TrafficPicture,
+  type LeaderDirection,
   type ScopeLayers,
+  type TrafficHit,
+  type TrafficOptions,
   type VideoMap,
 } from '@atc-app/scope';
+import { buildScenario, findScenario, scenariosForPack } from '@atc-app/scenario';
 import { loadPack } from '@/services/packLoader';
+import { SIM_RATES, SimSession, type SimRate } from '@/services/simSession';
 
 const route = useRoute();
 const router = useRouter();
@@ -31,6 +44,19 @@ const layers = reactive<ScopeLayers>({ ...DEFAULT_LAYERS });
 const rangeNm = ref(40);
 const frameMs = ref(0);
 const cursor = ref<LatLon | null>(null);
+
+// ── Traffic ────────────────────────────────────────────────────────────────
+const traffic = reactive<TrafficOptions>({ ...DEFAULT_TRAFFIC_OPTIONS });
+const scenarioName = ref<string | null>(null);
+const simTime = ref(0);
+const simRate = ref<SimRate>(1);
+const paused = ref(false);
+const aircraftCount = ref(0);
+const selectedAc = shallowRef<AircraftState | null>(null);
+const VECTOR_MINUTES = [0, 1, 2, 4] as const;
+let picture: TrafficPicture | null = null;
+let session: SimSession | null = null;
+let hits: TrafficHit[] = [];
 
 const view = new ScopeView({ rangeNm: 40 });
 let renderer: ScopeRenderer | null = null;
@@ -54,7 +80,10 @@ function requestDraw(): void {
   frame = requestAnimationFrame(() => {
     frame = 0;
     if (!renderer || !map.value) return;
-    frameMs.value = renderer.draw(view, map.value, layers).ms;
+    const t0 = performance.now();
+    renderer.draw(view, map.value, layers);
+    hits = picture ? renderer.drawTraffic(view, picture.list(), traffic).hits : [];
+    frameMs.value = performance.now() - t0;
     rangeNm.value = view.rangeNm;
   });
 }
@@ -73,9 +102,48 @@ function fitCanvas(): void {
   requestDraw();
 }
 
-// ── Interaction: drag to pan, wheel / pinch to zoom, keys ──────────────────
+// ── Sim session ────────────────────────────────────────────────────────────
+function onSnapshot(s: Snapshot): void {
+  if (!picture) return;
+  picture.update(s);
+  simTime.value = s.t;
+  aircraftCount.value = picture.size;
+  if (traffic.selected && !picture.get(traffic.selected)) traffic.selected = null;
+  selectedAc.value = traffic.selected ? picture.get(traffic.selected)!.ac : null;
+  requestDraw();
+}
+
+function select(callsign: string | null): void {
+  traffic.selected = callsign;
+  selectedAc.value = callsign ? picture?.get(callsign)?.ac ?? null : null;
+  requestDraw();
+}
+
+function setRate(r: SimRate): void {
+  simRate.value = r;
+  paused.value = false;
+  if (session) {
+    session.rate = r;
+    session.paused = false;
+  }
+}
+
+function togglePause(): void {
+  paused.value = !paused.value;
+  if (session) session.paused = paused.value;
+}
+
+function cycleVector(): void {
+  const i = VECTOR_MINUTES.indexOf(traffic.vectorMinutes as (typeof VECTOR_MINUTES)[number]);
+  traffic.vectorMinutes = VECTOR_MINUTES[(i + 1) % VECTOR_MINUTES.length]!;
+  requestDraw();
+}
+
+// ── Interaction: drag to pan, click to select, wheel / pinch to zoom, keys ─
 const pointers = new Map<number, { x: number; y: number }>();
 let pinchDistance = 0;
+let pressAt: { x: number; y: number } | null = null;
+const CLICK_SLOP_PX = 4;
 
 const local = (e: PointerEvent | WheelEvent) => {
   const r = canvas.value!.getBoundingClientRect();
@@ -84,7 +152,9 @@ const local = (e: PointerEvent | WheelEvent) => {
 
 function onPointerDown(e: PointerEvent): void {
   canvas.value?.setPointerCapture(e.pointerId);
-  pointers.set(e.pointerId, local(e));
+  const p = local(e);
+  pointers.set(e.pointerId, p);
+  pressAt = pointers.size === 1 ? p : null;
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     pinchDistance = Math.hypot(a!.x - b!.x, a!.y - b!.y);
@@ -97,6 +167,7 @@ function onPointerMove(e: PointerEvent): void {
   const prev = pointers.get(e.pointerId);
   if (!prev) return;
   pointers.set(e.pointerId, p);
+  if (pressAt && Math.hypot(p.x - pressAt.x, p.y - pressAt.y) > CLICK_SLOP_PX) pressAt = null;
   if (pointers.size === 1) {
     view.panBy(p.x - prev.x, p.y - prev.y);
   } else if (pointers.size === 2) {
@@ -109,6 +180,8 @@ function onPointerMove(e: PointerEvent): void {
 }
 
 function onPointerUp(e: PointerEvent): void {
+  if (e.type === 'pointerup' && pressAt && pointers.size === 1) select(hitTest(hits, local(e)));
+  pressAt = null;
   pointers.delete(e.pointerId);
   pinchDistance = 0;
 }
@@ -145,6 +218,12 @@ function toggle(layer: keyof ScopeLayers): void {
 
 function onKey(e: KeyboardEvent): void {
   const pan = 60;
+  // Numpad layout moves the selected data block (STARS-style leader direction).
+  if (/^[1-46-9]$/.test(e.key) && traffic.selected && picture) {
+    picture.setLeader(traffic.selected, Number(e.key) as LeaderDirection);
+    requestDraw();
+    return;
+  }
   switch (e.key) {
     case '+':
     case '=':
@@ -172,13 +251,23 @@ function onKey(e: KeyboardEvent): void {
     case 'l':
       toggle('labels');
       return;
+    case 'v':
+      cycleVector();
+      return;
+    case ' ':
+      e.preventDefault();
+      togglePause();
+      return;
+    case 'Escape':
+      select(null);
+      return;
     default:
       return;
   }
   requestDraw();
 }
 
-// ── Readout ────────────────────────────────────────────────────────────────
+// ── Readouts ───────────────────────────────────────────────────────────────
 function dm(value: number, pos: string, neg: string, degDigits: number): string {
   const v = Math.abs(value);
   const deg = Math.floor(v);
@@ -195,7 +284,44 @@ const readout = computed(() => {
   return `${dm(c.lat, 'N', 'S', 2)} ${dm(c.lon, 'E', 'W', 3)}   ${String(Math.round(brgMag) || 360).padStart(3, '0')}° ${dist.toFixed(1)} NM`;
 });
 
+const clock = computed(() => {
+  const s = Math.floor(simTime.value);
+  const hh = String(Math.floor(s / 3600)).padStart(2, '0');
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+  const ss = String(s % 60).padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+});
+
+const selectedInfo = computed(() => {
+  const ac = selectedAc.value;
+  if (!ac) return null;
+  const fl = (ft: number) => String(Math.round(ft / 100)).padStart(3, '0');
+  const t = ac.target;
+  const next = [t.directFix, ...t.route].filter(Boolean).slice(0, 4).join(' ');
+  return {
+    head: [ac.callsign, `${ac.icaoType}/${ac.wake}`, ac.destination, `SQ ${ac.squawk}`].filter(Boolean).join('  '),
+    alt: `ALT ${fl(ac.altFt)}${t.altFt !== ac.altFt ? ` → ${fl(t.altFt)}` : ''}`,
+    spd: `IAS ${Math.round(ac.casKt)}  GS ${Math.round(ac.gsKt)}  M${ac.mach.toFixed(2).slice(1)}`,
+    hdg: `HDG ${String(magneticHeading(ac, magVar.value)).padStart(3, '0')}`,
+    nav: next ? `DCT ${next}` : t.headingTrue !== null ? 'VECTORS' : '',
+  };
+});
+
 // ── Lifecycle ──────────────────────────────────────────────────────────────
+async function startTraffic(pack: Parameters<typeof buildScenario>[1], m: VideoMap): Promise<void> {
+  const wanted = typeof route.query.scenario === 'string' ? route.query.scenario : undefined;
+  if (wanted === 'none') return;
+  const script = wanted ? findScenario(wanted) : scenariosForPack(pack.meta.id)[0];
+  if (!script) {
+    if (wanted) throw new Error(`Unknown scenario "${wanted}"`);
+    return;
+  }
+  const built = buildScenario(script, pack);
+  picture = new TrafficPicture(m.projection);
+  scenarioName.value = script.name;
+  session = await SimSession.start(built.config, built.traffic, onSnapshot);
+}
+
 onMounted(async () => {
   ctx = canvas.value?.getContext('2d') ?? null;
   if (ctx) renderer = new ScopeRenderer(ctx);
@@ -204,9 +330,11 @@ onMounted(async () => {
   window.addEventListener('keydown', onKey);
   try {
     const { pack } = await loadPack(String(route.params.packId));
-    map.value = buildVideoMap(pack);
+    const m = buildVideoMap(pack);
+    map.value = m;
     magVar.value = pack.meta.magVar;
     fitCanvas();
+    await startTraffic(pack, m);
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -218,6 +346,8 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect();
   window.removeEventListener('keydown', onKey);
   if (frame) cancelAnimationFrame(frame);
+  session?.dispose();
+  session = null;
 });
 </script>
 
@@ -236,7 +366,9 @@ onBeforeUnmount(() => {
 
     <div class="panel top-left">
       <button class="btn" @click="router.push({ name: 'home' })">HOME</button>
-      <span v-if="map" class="title">{{ map.name }} · AIRAC {{ map.airac }}</span>
+      <span v-if="map" class="title">
+        {{ map.name }} · AIRAC {{ map.airac }}<template v-if="scenarioName"> · {{ scenarioName }}</template>
+      </span>
     </div>
 
     <div class="panel top-right">
@@ -263,10 +395,38 @@ onBeforeUnmount(() => {
         </button>
         <button class="btn" title="Recentre (0)" @click="recentre">CTR</button>
       </div>
+      <div v-if="scenarioName" class="row">
+        <span class="clock" :class="{ dim: paused }">{{ clock }}</span>
+        <button class="btn" :class="{ active: paused }" title="Pause (space)" @click="togglePause">
+          {{ paused ? '▶' : 'II' }}
+        </button>
+        <button
+          v-for="r in SIM_RATES"
+          :key="r"
+          class="btn"
+          :class="{ active: !paused && simRate === r }"
+          @click="setRate(r)"
+        >
+          ×{{ r }}
+        </button>
+        <button class="btn" :class="{ active: traffic.vectorMinutes > 0 }" title="Speed vector (v)" @click="cycleVector">
+          VEC {{ traffic.vectorMinutes }}
+        </button>
+      </div>
+    </div>
+
+    <div v-if="selectedInfo" class="panel bottom-right">
+      <div class="info">
+        <div class="info-head">{{ selectedInfo.head }}</div>
+        <div>{{ selectedInfo.alt }}  {{ selectedInfo.hdg }}</div>
+        <div>{{ selectedInfo.spd }}</div>
+        <div v-if="selectedInfo.nav" class="dim">{{ selectedInfo.nav }}</div>
+      </div>
     </div>
 
     <div class="panel bottom-left">
       <span>RNG {{ rangeNm.toFixed(rangeNm < 10 ? 1 : 0) }} NM</span>
+      <span v-if="scenarioName">ACFT {{ aircraftCount }}</span>
       <span v-if="readout">{{ readout }}</span>
       <span class="dim">{{ frameMs.toFixed(1) }} ms</span>
     </div>
@@ -314,11 +474,16 @@ onBeforeUnmount(() => {
   left: 0;
   gap: 16px;
 }
+.bottom-right {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
+  right: 0;
+}
 .row {
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: center;
 }
 .title {
   color: #a9bfca;
@@ -330,6 +495,23 @@ onBeforeUnmount(() => {
 }
 .dim {
   color: #35596d;
+}
+.clock {
+  min-width: 64px;
+  color: #cfe0e8;
+  text-align: right;
+}
+.info {
+  padding: 8px 10px;
+  border: 1px solid #21404f;
+  border-radius: 3px;
+  background: rgba(11, 22, 32, 0.85);
+  color: #a9bfca;
+  line-height: 1.5;
+  white-space: pre;
+}
+.info-head {
+  color: #ffd27a;
 }
 .btn {
   min-width: 34px;

@@ -12,6 +12,7 @@
 import { M_PER_NM, type LocalXY } from '@atc-app/sim';
 import type { ScopeView, ScreenXY } from './view';
 import type { MapFix, VideoMap } from './videomap';
+import { dataBlockLines, leaderVector, type TrafficTrack } from './traffic';
 
 export interface ScopeLayers {
   rangeRings: boolean;
@@ -313,6 +314,147 @@ export class ScopeRenderer {
     stats.ms = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
     return stats;
   }
+
+  /**
+   * Draws traffic on top of the video map: history dots, speed vectors, leader
+   * lines, targets and full data blocks. Returns hit boxes for selection.
+   */
+  drawTraffic(view: ScopeView, tracks: readonly TrafficTrack[], opts: TrafficOptions): TrafficDrawResult {
+    const ctx = this.ctx;
+    const hits: TrafficHit[] = [];
+    const S = (p: LocalXY): ScreenXY => view.toScreen(p);
+    ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+    ctx.font = FONT;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+
+    // Margin wide enough for a data block of a target just off screen.
+    const visible = tracks.filter((t) => view.isVisible(t.xy, 120));
+
+    // ── History: oldest faintest ──────────────────────────────────────────
+    const dots = Math.min(opts.historyDots, TRAFFIC_PALETTE.history.length);
+    for (let i = dots - 1; i >= 0; i--) {
+      ctx.fillStyle = TRAFFIC_PALETTE.history[i]!;
+      ctx.beginPath();
+      for (const t of visible) {
+        const h = t.history[i];
+        if (!h) continue;
+        const s = S(h);
+        ctx.moveTo(s.x + 1.6, s.y);
+        ctx.arc(s.x, s.y, 1.6, 0, Math.PI * 2);
+      }
+      ctx.fill();
+    }
+
+    // ── Speed vectors: where the aircraft will be in N minutes ────────────
+    if (opts.vectorMinutes > 0) {
+      ctx.strokeStyle = TRAFFIC_PALETTE.vector;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (const t of visible) {
+        const m = (t.ac.gsKt * M_PER_NM * opts.vectorMinutes) / 60;
+        const tr = (t.ac.trackTrue * Math.PI) / 180;
+        const a = S(t.xy);
+        const b = S({ x: t.xy.x + m * Math.sin(tr), y: t.xy.y + m * Math.cos(tr) });
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+      }
+      ctx.stroke();
+    }
+
+    // ── Targets, leader lines, data blocks ────────────────────────────────
+    const lineH = 12;
+    for (const t of visible) {
+      const s = S(t.xy);
+      const selected = t.callsign === opts.selected;
+      const colour = selected ? TRAFFIC_PALETTE.selected : TRAFFIC_PALETTE.dataBlock;
+
+      ctx.fillStyle = selected ? TRAFFIC_PALETTE.selected : TRAFFIC_PALETTE.target;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, TARGET_RADIUS_PX, 0, Math.PI * 2);
+      ctx.fill();
+      if (selected) {
+        ctx.strokeStyle = TRAFFIC_PALETTE.selected;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, TARGET_RADIUS_PX + 4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      hits.push({
+        callsign: t.callsign,
+        x: s.x - TARGET_HIT_PX,
+        y: s.y - TARGET_HIT_PX,
+        w: TARGET_HIT_PX * 2,
+        h: TARGET_HIT_PX * 2,
+      });
+
+      const lines = dataBlockLines(t.ac);
+      const w = Math.max(...lines.map((l) => ctx.measureText(l).width));
+      const h = lineH * lines.length;
+      const { dx, dy } = leaderVector(t.leader);
+      const start = { x: s.x + dx * (TARGET_RADIUS_PX + 2), y: s.y + dy * (TARGET_RADIUS_PX + 2) };
+      const end = { x: s.x + dx * LEADER_PX, y: s.y + dy * LEADER_PX };
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
+      ctx.stroke();
+
+      // Block corner nearest the target sits at the leader end.
+      const bx = dx > 0.1 ? end.x + 2 : dx < -0.1 ? end.x - 2 - w : end.x - w / 2;
+      const by = dy > 0.1 ? end.y : dy < -0.1 ? end.y - h : end.y - h / 2;
+      ctx.fillStyle = colour;
+      lines.forEach((l, i) => ctx.fillText(l, bx, by + lineH * i + lineH / 2));
+      hits.push({ callsign: t.callsign, x: bx, y: by, w, h });
+    }
+    return { hits, drawn: visible.length };
+  }
+}
+
+export const TRAFFIC_PALETTE = {
+  target: '#e6f2f8',
+  dataBlock: '#8fe3a8',
+  selected: '#ffd27a',
+  vector: '#8fe3a8',
+  /** Newest → oldest. */
+  history: ['#5d8fae', '#4f7f9c', '#45718b', '#3c637a', '#34566a', '#2d4b5c', '#28414f', '#233944'],
+} as const;
+
+const TARGET_RADIUS_PX = 3.5;
+const TARGET_HIT_PX = 10;
+const LEADER_PX = 22;
+
+export interface TrafficOptions {
+  /** Speed vector length, minutes; 0 hides vectors. */
+  vectorMinutes: number;
+  historyDots: number;
+  selected: string | null;
+}
+
+export const DEFAULT_TRAFFIC_OPTIONS: TrafficOptions = { vectorMinutes: 1, historyDots: 5, selected: null };
+
+/** Screen-space box (CSS px) that selects an aircraft when clicked. */
+export interface TrafficHit {
+  callsign: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface TrafficDrawResult {
+  hits: TrafficHit[];
+  drawn: number;
+}
+
+/** Topmost hit under a screen point (later boxes are drawn on top). */
+export function hitTest(hits: readonly TrafficHit[], p: ScreenXY): string | null {
+  for (let i = hits.length - 1; i >= 0; i--) {
+    const h = hits[i]!;
+    if (p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h) return h.callsign;
+  }
+  return null;
 }
 
 /** Distance between two local points in NM (cursor readouts). */

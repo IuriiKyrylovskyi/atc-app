@@ -16,6 +16,7 @@ export interface PortLike {
 export type SimRequest =
   | { op: 'init'; config: SimConfig; state?: SimState }
   | { op: 'addAircraft'; spawn: AircraftSpawn }
+  | { op: 'schedule'; atS: number; spawn: AircraftSpawn }
   | { op: 'removeAircraft'; callsign: string }
   | { op: 'issue'; message: Message }
   | { op: 'advance'; seconds: number }
@@ -26,6 +27,7 @@ export type SimRequest =
 export interface SimResponseMap {
   init: null;
   addAircraft: null;
+  schedule: null;
   removeAircraft: null;
   issue: IssueResult;
   advance: Snapshot;
@@ -56,6 +58,9 @@ export function serveSimulation(port: PortLike): () => void {
     switch (req.op) {
       case 'addAircraft':
         sim.addAircraft(req.spawn);
+        return null;
+      case 'schedule':
+        sim.schedule(req.atS, req.spawn);
         return null;
       case 'removeAircraft':
         sim.removeAircraft(req.callsign);

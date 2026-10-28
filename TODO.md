@@ -49,7 +49,8 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [x] Seeded RNG + event log (every clearance / alert / event timestamped)
 - [x] Snapshot / restore of full sim state (needed for wind, reset, branch)
 - [x] Bridge: typed request/response over any port (`PortLike`) + in-memory port pair
-- [ ] Concrete adapters: browser `Worker` and Node `worker_threads` — Phase 1, when the scope uses them
+- [x] Browser `Worker` adapter (`app/src/workers/sim.worker.ts`, main-thread fallback)
+- [ ] Node `worker_threads` adapter (Electron / Academy server)
 - [x] Minimal aircraft: heading hold, standard-rate / bank-limited turns, altitude change, speed change, 250 kt < FL100, direct-to, uniform wind
 - [x] Headless test: fly heading + direct-to, assert positions/times
 - [x] Determinism test: same seed + same clearances ⇒ identical state and event log
@@ -69,8 +70,12 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [x] `ScopeView` (`packages/scope`): pan / zoom at cursor / pinch / range presets / north-up
 - [x] Scope static layers (Canvas 2D): airways, fixes, navaids, airports, runways, ILS extended centrelines with 1 NM ticks, declutter by range, non-overlapping labels
 - [ ] Scope layers: SID/STAR/approach paths, airspace areas, MVA
-- [ ] Targets: symbol, history dots, speed vector, leader line
-- [ ] Data blocks: configurable fields, full/limited, drag, auto-deconflict
+- [x] Traffic on scope: sim in a Web Worker, one advance per radar sweep (4.8 s, ASR-9), pause / ×1 ×2 ×4 ×8
+- [x] Targets: symbol, history dots, speed vector (0/1/2/4 min), leader line, click to select + info panel
+- [x] Full data block: callsign / altitude, trend, assigned level, ground speed / type, destination; numpad leader direction
+- [ ] Data blocks: configurable fields, limited blocks, drag, auto-deconflict
+- [x] Sim: route following (fix sequence), vectors keep the route, direct-to shortcuts it, resume own navigation; scheduled spawns
+- [x] Scripted scenarios (`packages/scenario`): STAR routes from the pack, NY arrivals (7 aircraft on CAMRN5 / PARCH4 / PAWLN1 / PUCKY1 / MIP4 / PHLBO4 / FLOSI4), `?scenario=<id>|none`
 - [x] Range rings, scale bar, cursor lat/lon + bearing/distance readout
 - [ ] Range/bearing tool, day/night palette
 - [ ] OpenAP export to JSON for ~15 types + type-to-reference mapping

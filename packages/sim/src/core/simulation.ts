@@ -8,6 +8,8 @@
  *   RNG, and are logged as events.
  * - The whole state is plain JSON: `saveState()` / `Simulation.restore()` give wind,
  *   rewind, reset and branch (ATC_ARCHITECTURE.md §14.4) for free.
+ * - Aircraft can be scheduled to appear at a sim time (scenario traffic), which
+ *   keeps scripted sessions deterministic and part of the saved state.
  * - No DOM, no timers: whoever owns the sim decides when to call `advance()`
  *   (a worker loop, the Academy server, or a test).
  */
@@ -44,6 +46,11 @@ interface PendingMessage {
   message: Message;
 }
 
+interface ScheduledSpawn {
+  atS: number;
+  spawn: AircraftSpawn;
+}
+
 /** Serializable simulation state. */
 export interface SimState {
   version: 1;
@@ -52,6 +59,7 @@ export interface SimState {
   rngState: number;
   aircraft: AircraftState[];
   pending: PendingMessage[];
+  scheduled: ScheduledSpawn[];
   log: SimEvent[];
   /** Index into `log` of the first event not yet returned by `snapshot()`. */
   snapshotCursor: number;
@@ -94,6 +102,7 @@ export class Simulation {
           rngState: config.seed >>> 0,
           aircraft: [],
           pending: [],
+          scheduled: [],
           log: [],
           snapshotCursor: 0,
         };
@@ -134,9 +143,12 @@ export class Simulation {
       });
       if (res.fixReached) {
         this.log({ t: this.time + dt, type: 'fix_reached', callsign: ac.callsign, fix: res.fixReached });
+        if (res.routeEnded) this.log({ t: this.time + dt, type: 'route_ended', callsign: ac.callsign, fix: res.fixReached });
       }
     }
     this.state.step += 1;
+    // After the step, so an aircraft scheduled at t is on the scope at t.
+    this.spawnDue();
     this.state.rngState = this.rng.state;
   }
 
@@ -144,6 +156,9 @@ export class Simulation {
 
   addAircraft(spawn: AircraftSpawn): void {
     if (this.find(spawn.callsign)) throw new Error(`Duplicate callsign ${spawn.callsign}`);
+    const route = spawn.route ?? [];
+    const unknown = route.filter((f) => !this.fixes.has(f));
+    if (unknown.length > 0) throw new Error(`${spawn.callsign}: unknown route fix ${unknown.join(', ')}`);
     const ac: AircraftState = {
       callsign: spawn.callsign,
       icaoType: spawn.icaoType,
@@ -159,18 +174,38 @@ export class Simulation {
       gsKt: 0,
       mach: 0,
       vsFpm: 0,
+      ...(spawn.destination ? { destination: spawn.destination } : {}),
       target: {
-        altFt: spawn.altFt,
-        headingTrue: normDeg(spawn.headingTrue),
+        altFt: spawn.clearedAltFt ?? spawn.altFt,
+        headingTrue: route.length > 0 ? null : normDeg(spawn.headingTrue),
         turn: null,
-        casKt: spawn.casKt,
+        casKt: spawn.clearedCasKt ?? spawn.casKt,
         mach: null,
         vsFpm: null,
-        directFix: null,
+        directFix: route[0] ?? null,
+        route: route.slice(1),
       },
     };
     this.state.aircraft.push(ac);
     this.log({ t: this.time, type: 'aircraft_added', callsign: ac.callsign });
+  }
+
+  /** Adds the aircraft when sim time reaches `atS` (immediately if already past). */
+  schedule(atS: number, spawn: AircraftSpawn): void {
+    if (atS <= this.time + 1e-9) {
+      this.addAircraft(spawn);
+      return;
+    }
+    this.state.scheduled.push({ atS, spawn: clone(spawn) });
+    this.state.scheduled.sort((a, b) => a.atS - b.atS);
+  }
+
+  private spawnDue(): void {
+    const now = this.time;
+    while (this.state.scheduled.length > 0 && this.state.scheduled[0]!.atS <= now + 1e-9) {
+      const { spawn } = this.state.scheduled.shift()!;
+      this.addAircraft(spawn);
+    }
   }
 
   removeAircraft(callsign: string): void {
@@ -231,13 +266,13 @@ export class Simulation {
         if (c.headingMag <= 0 || c.headingMag > 360) return reject('invalid heading');
         t.headingTrue = magToTrue(c.headingMag, this.config.magVar);
         t.turn = c.turn ?? null;
-        t.directFix = null;
+        this.leaveRoute(t);
         break;
       case 'turn':
         if (c.degrees <= 0 || c.degrees >= 360) return reject('invalid turn');
         t.headingTrue = normDeg(ac.headingTrue + (c.direction === 'right' ? c.degrees : -c.degrees));
         t.turn = c.direction;
-        t.directFix = null;
+        this.leaveRoute(t);
         break;
       case 'speed':
         if (c.mach !== undefined) {
@@ -253,6 +288,11 @@ export class Simulation {
         break;
       case 'direct':
         if (!this.fixes.has(c.fix)) return reject(`unknown fix ${c.fix}`);
+        // A fix further down the route shortcuts it; any other fix replaces the route.
+        if (c.fix !== t.directFix) {
+          const at = t.route.indexOf(c.fix);
+          t.route = at >= 0 ? t.route.slice(at + 1) : [];
+        }
         t.directFix = c.fix;
         t.headingTrue = null;
         t.turn = null;
@@ -262,7 +302,13 @@ export class Simulation {
         ac.squawk = c.code;
         break;
       case 'resume_own_navigation':
-        return reject('needs the FMS (Phase 4)');
+        if (t.directFix) return reject('already on own navigation');
+        if (t.route.length === 0) return reject('no route to resume');
+        // Phase 0: direct to the next route fix. The FMS (Phase 4) will intercept the leg instead.
+        t.directFix = t.route.shift()!;
+        t.headingTrue = null;
+        t.turn = null;
+        break;
     }
     this.log({ t: this.time, type: 'clearance_applied', callsign: ac.callsign, clearance: c });
   }
@@ -284,6 +330,12 @@ export class Simulation {
   saveState(): SimState {
     this.state.rngState = this.rng.state;
     return clone(this.state);
+  }
+
+  /** Vectors: stop navigating, but keep the route so the aircraft can resume it. */
+  private leaveRoute(t: AircraftState['target']): void {
+    if (t.directFix) t.route.unshift(t.directFix);
+    t.directFix = null;
   }
 
   private find(callsign: string): AircraftState | undefined {
