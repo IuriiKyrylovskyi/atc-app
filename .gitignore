@@ -137,3 +137,9 @@ screenshots/
 # Downloaded source data (see db/README.md)
 db/**
 !db/README.md
+
+# Built packs (pnpm pack:build)
+packs/dist/
+
+# Source folders named "build" are code, not output
+!packages/*/src/build/

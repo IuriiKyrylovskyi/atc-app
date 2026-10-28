@@ -6,8 +6,16 @@
  *
  * No paid alternative is needed here.
  */
-import * as GeographicLib from 'geographiclib-geodesic';
+import * as GeographicLibModule from 'geographiclib-geodesic';
 import { M_PER_NM, normDeg } from '../units';
+
+// The package is a minified UMD/CommonJS bundle: bundlers (Vite) expose its
+// named exports, plain Node ESM only exposes `default`. Accept both.
+type GeographicLibApi = typeof GeographicLibModule;
+const GeographicLib: GeographicLibApi =
+  (GeographicLibModule as Partial<GeographicLibApi>).Geodesic !== undefined
+    ? GeographicLibModule
+    : (GeographicLibModule as unknown as { default: GeographicLibApi }).default;
 
 export interface LatLon {
   /** Degrees, positive north. */

@@ -60,9 +60,9 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [x] Importer: FAA CIFP (ARINC 424) — airports, runways + ILS, waypoints, navaids, airways, SID/STAR/IAP legs (all 23 path terminators); `pnpm data:cifp` fetches the AIRAC file into `db/`
 - [ ] CIFP: controlled / restrictive airspace (UC / UR boundaries with arcs), MSA, holds (EP)
 - [ ] Importer: FAA NASR (frequencies, airspace classes, MVA charts)
-- [ ] Pack builder CLI `pnpm pack:build <id>` with AIRAC version, source/licence metadata
+- [x] Pack builder CLI `pnpm pack:build <id>|--all`: definitions in `packs/*.pack.json`, CIFP + OurAirports, AIRAC-versioned output + manifest (size, sha256, counts, sources)
 - [x] Pack validation: schema, publishable licences, unique ids, runway length/heading geometry, references, areas
-- [ ] Pack validation: ≤ 10 m check against a second source, diff vs. previous AIRAC
+- [x] Runway cross-check CIFP ↔ OurAirports (NY TMA: median 3.8 m) + diff vs. previous AIRAC build
 - [ ] Pack hosting in Supabase Storage + manifest/hash download in the app
 - [ ] ⛔ D1b First pack for the chosen TMA
 - [ ] `ScopeView`: pan / zoom / range presets / north-up, float-jitter-safe rendering

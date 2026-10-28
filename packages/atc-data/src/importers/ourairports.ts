@@ -44,6 +44,8 @@ export interface OurAirportsInput {
 
 export interface ImportResult {
   airports: Airport[];
+  /** OurAirports type of each imported airport, by code. */
+  airportTypes: Record<string, OurAirportsType>;
   runways: Runway[];
   source: PackSource;
   warnings: string[];
@@ -70,6 +72,7 @@ export function importOurAirports(input: OurAirportsInput, filter: OurAirportsFi
 
   // ── Airports ─────────────────────────────────────────────────────────────
   const airports: Airport[] = [];
+  const airportTypes: Record<string, OurAirportsType> = {};
   const byIdent = new Map<string, Airport>();
   for (const r of parseCsvRecords(input.airportsCsv)) {
     if (!types.has(r.type as OurAirportsType)) continue;
@@ -99,6 +102,7 @@ export function importOurAirports(input: OurAirportsInput, filter: OurAirportsFi
       ...(r.iata_code ? { iata: r.iata_code } : {}),
     };
     airports.push(airport);
+    airportTypes[code] = r.type as OurAirportsType;
     byIdent.set((r.ident ?? '').toUpperCase(), airport);
   }
 
@@ -156,6 +160,7 @@ export function importOurAirports(input: OurAirportsInput, filter: OurAirportsFi
 
   return {
     airports,
+    airportTypes,
     runways,
     warnings,
     source: {

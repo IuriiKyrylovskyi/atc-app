@@ -49,7 +49,9 @@
     "release:all:minor": "pnpm run release:minor && pnpm run android:bundle && pnpm run ios:release",
     "release:all:major": "pnpm run release:major && pnpm run android:bundle && pnpm run ios:release",
     "check:skymess": "node scripts/check-skymess-updates.mjs",
-    "data:cifp": "node scripts/fetch-cifp.mjs"
+    "data:cifp": "node scripts/fetch-cifp.mjs",
+    "data:ourairports": "node scripts/fetch-ourairports.mjs",
+    "pack:build": "pnpm --filter @atc-app/atc-data pack:build"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
