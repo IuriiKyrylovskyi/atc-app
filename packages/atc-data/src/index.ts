@@ -33,3 +33,4 @@ export * from './schema';
 export * from './validate';
 export * from './csv';
 export * from './importers/ourairports';
+export * from './importers/cifp';

@@ -1,0 +1,163 @@
+HDR01FAACIFP18      001P013203973042611  07-OCT-202615:55:03  U.S.A. DOT FAA                                                9D60747B
+SUSAP KJFKK6AJFK     0     145YHN40382374W073464329W013000013         1800018000C    MNAR    JOHN F KENNEDY INTL           303911912
+SUSAP KJFKK6CAROKE K60    R     N40282056W073540760                       W0125     NAR           AROKE                    303922504
+SUSAP KJFKK6CBARJR K60    W     N40400265W073450039                       W0126     NAR           BARJR                    303932507
+SUSAP KJFKK6CBOTON K60    R     N39245210W074271708                       W0121     NAR           BOTON                    303942506
+SUSAP KJFKK6CBUZON K60    W     N40425434W073590299                       W0125     NAR           BUZON                    303952504
+SUSAP KJFKK6CCAPIT K60    C     N40453799W073374946                       W0127     NAR           CAPIT                    303962504
+SUSAP KJFKK6CCATOD K60    C     N40323338W073321404                       W0127     NAR           CATOD                    303972504
+SUSAP KJFKK6CCAXUN K60    R     N40414117W073521918                       W0125     NAR           CAXUN                    303982605
+SUSAP KJFKK6CCEEGL K60    W     N40320080W073354530                       W0126     NAR           CEEGL                    303992605
+SUSAP KJFKK6CCESID K60    W     N40322484W073512504                       W0125     NAR           CESID                    304002605
+SUSAP KJFKK6CCFLNN K60    W     N40384700W073452503                       W0126     NAR           CFLNN(CNF)               304012504
+SUSAP KJFKK6CCHANT K60    C     N40185829W073452499                       W0125     NAR           CHANT                    304022605
+SUSAP KJFKK6CCIMBL K60    W     N40451125W074001913                       W0125     NAR           CIMBL                    304032504
+SUSAP KJFKK6CCORVT K60    R     N40475941W073392833                       W0126     NAR           CORVT                    304042605
+SUSAP KJFKK6CCOVIR K60    W     N40264664W074013590                       W0124     NAR           COVIR                    304052605
+SUSAP KJFKK6CCRAIL K60    W     N40411308W073203628                       W0128     NAR           CRAIL                    304062504
+SUSAP KJFKK6CCUVKU K60    W     N40350967W073404576                       W0126     NAR           CUVKU                    304072504
+SUSAP KJFKK6CDETGY K60    W     N40410170W073274630                       W0127     NAR           DETGY                    304082605
+SUSAP KJFKK6CDMYHL K60    C     N40385852W073515871                       W0125     NAR           DMYHL                    304092605
+SUSAP KJFKK6CDUFFY K60    C     N40472800W073312139                       W0127     NAR           DUFFY                    304102605
+SUSAP KJFKK6CEBBEE K60    C     N40333892W073491475                       W0125     NAR           EBBEE                    304112605
+SUSAP KJFKK6CENEEE K60    W     N40423904W073405916                       W0126     NAR           ENEEE                    304122605
+SUSAP KJFKK6CFOLER K60    W     N40360807W073471841                       W0126     NAR           FOLER                    304132504
+SUSAP KJFKK6CFRNKY K60    W     N40244764W073441573                       W0125     NAR           FRNKY                    304142605
+SUSAP KJFKK6CGAALO K60    W     N40400945W073440980                       W0126     NAR           GAALO                    304152507
+SUSAP KJFKK6CGIGPE K60    W     N40484477W073343087                       W0127     NAR           GIGPE                    304162504
+SUSAP KJFKK6CHAIRR K60    W     N40400457W073513287                       W0125     NAR           HAIRR                    304172605
+SUSAP KJFKK6CHAUPT K60    W     N40460260W073243553                       W0128     NAR           HAUPT                    304182504
+SUSAP KJFKK6CHELOG K60    W     N40324818W073593975                       W0125     NAR           HELOG                    304192504
+SUSAP KJFKK6CHENEB K60    W     N40432401W073422271                       W0126     NAR           HENEB                    304202605
+SUSAP KJFKK6CHIRBO K60    C     N40472568W073181049                       W0128     NAR           HIRBO                    304212504
+SUSAP KJFKK6CIGIDE K60    W     N40354502W073391397                       W0126     NAR           IGIDE                    304222605
+SUSAP KJFKK6CKMCHI K60    W     N40373116W074023828                       W0124     NAR           KMCHI                    304232605
+SUSAP KJFKK6CKRSTL K60    C     N40333140W073500590                       W0125     NAR           KRSTL                    304242605
+SUSAP KJFKK6CLEFER K60    W     N40492724W073315794                       W0127     NAR           LEFER                    304252605
+SUSAP KJFKK6CMALDE K60    R     N40335357W073350963                       W0126     NAR           MALDE                    304262605
+SUSAP KJFKK6CMATTR K60    R     N40433582W073423501                       W0126     NAR           MATTR                    304272605
+SUSAP KJFKK6CMEALS K60    R     N40351035W073404725                       W0126     NAR           MEALS                    304282504
+SUSAP KJFKK6CMETSS K60    W     N40334824W073560471                       W0125     NAR           METSS                    304292603
+SUSAP KJFKK6CNAYIK K60    W     N40482862W073373830                       W0127     NAR           NAYIK                    304302504
+SUSAP KJFKK6CNRTON K60    W     N40083474W073440757                       W0125     NAR           NRTON                    304312504
+SUSAP KJFKK6CPIDTO K60    W     N40364958W073473130                       W0126     NAR           PIDTO                    304322504
+SUSAP KJFKK6CPONAE K60    W     N40401997W073444686                       W0126     NAR           PONAE                    304332603
+SUSAP KJFKK6CPZULU K60    W     N40371539W073234407                       W0127     NAR           PZULU                    304342605
+SUSAP KJFKK6CREPRE K60    W     N40275583W073542697                       W0125     NAR           REPRE                    304352504
+SUSAP KJFKK6CRISSY K60    W     N40235217W073351379                       W0126     NAR           RISSY                    304362605
+SUSAP KJFKK6CRIVRA K60    W     N40483348W073381975                       W0127     NAR           RIVRA                    304372504
+SUSAP KJFKK6CRNGRR K60    C     N40134859W074122069                       W0123     NAR           RNGRR                    304382504
+SUSAP KJFKK6CROSLY K60    C     N40474997W073380868                       W0127     NAR           ROSLY                    304392504
+SUSAP KJFKK6CSAJUL K60    W     N40193856W073330012                       W0126     NAR           SAJUL                    304402605
+SUSAP KJFKK6CSESKE K60    W     N40392446W073255665                       W0127     NAR           SESKE                    304412605
+SUSAP KJFKK6CSKORR K60    W     N40354701W073532184                       W0125     NAR           SKORR                    304422605
+SUSAP KJFKK6CTAPPR K60    W     N40382511W073293903                       W0127     NAR           TAPPR                    304432504
+SUSAP KJFKK6CTELEX K60    R     N40424247W073543485                       W0125     NAR           TELEX                    304442605
+SUSAP KJFKK6CUXHUB K60    R     N40402477W073493029                       W0126     NAR           UXHUB                    304452504
+SUSAP KJFKK6CVERRU K60    W     N40282958W073531547                       W0125     NAR           VERRU                    304462504
+SUSAP KJFKK6CVIDIO K60    W     N40233596W073332792                       W0126     NAR           VIDIO                    304472605
+SUSAP KJFKK6CWERIN K60    W     N40295324W074003599                       W0124     NAR           WERIN                    304482605
+SUSAP KJFKK6CWIKOL K60    W     N40522410W073303715                       W0127     NAR           WIKOL                    304492605
+SUSAP KJFKK6CYNKEE K60    W     N40290090W073505718                       W0125     NAR           YNKEE                    304502605
+SUSAP KJFKK6CZALPO K60    C     N40432384W073413756                       W0126     NAR           ZALPO                    304512605
+SUSAP KJFKK6CZETAL K60    C     N40292380W073523333                       W0125     NAR           ZETAL                    304522504
+SUSAP KJFKK6CZOSDO K60    W     N40403119W073432573                       W0126     NAR           ZOSDO                    304532504
+SUSAP KJFKK6CZULAB K60    C     N40354732W073391903                       W0126     NAR           ZULAB                    304542605
+SUSAP KJFKK6DDEEZZ64RW04L 010         0        VA                     0438        + 00520     18000       KJFK  K6PA       304552603
+SUSAP KJFKK6DDEEZZ64RW04L 020PONAEK6PC0EY      DF                                                                          304562603
+SUSAP KJFKK6DDEEZZ64RW04L 030         0 E      VM                     0990                                                 304572603
+SUSAP KJFKK6DDEEZZ64RW04R 010         0        VA                     0438        + 00520     18000                        304582603
+SUSAP KJFKK6DDEEZZ64RW04R 020         0 E      VM                     0990                                                 304592603
+SUSAP KJFKK6DDEEZZ64RW31B 010         0        VA                     3138        + 00520     18000                        304602603
+SUSAP KJFKK6DDEEZZ64RW31B 020SKORRK6PC0E   L   DF                                 + 02500          210               -     304612603
+SUSAP KJFKK6DDEEZZ64RW31B 030CESIDK6PC0E       TF                                 + 02500          250               -     304622603
+SUSAP KJFKK6DDEEZZ64RW31B 040YNKEEK6PC0E       TF                                                                          304632603
+SUSAP KJFKK6DDEEZZ64RW31B 050YNKEEK6PC0EE      FM CCC K6      254205491870    D                                            304642603
+SUSAP KJFKK6DDEEZZ65      010DEEZZK6EA0E       IF                                             18000                        304652603
+SUSAP KJFKK6DDEEZZ65      020HEEROK6EA0EE      TF                                                                          304662603
+SUSAP KJFKK6DDEEZZ66CANDR 010HEEROK6EA0E       IF                                             18000                        304672603
+SUSAP KJFKK6DDEEZZ66CANDR 020KURNLK6EA0E       TF                                                                          304682603
+SUSAP KJFKK6DDEEZZ66CANDR 030CANDRK6EA0EE      TF                                                                          304692603
+SUSAP KJFKK6DDEEZZ66TOWIN 010HEEROK6EA0E       IF                                             18000                        304702603
+SUSAP KJFKK6DDEEZZ66TOWIN 020KURNLK6EA0E       TF                                                                          304712603
+SUSAP KJFKK6DDEEZZ66TOWIN 030CANDRK6EA0E       TF                                                                          304722603
+SUSAP KJFKK6DDEEZZ66TOWIN 040TOWINK6EA0EE      TF                                                                          304732603
+SUSAP KJFKK6ECAMRN52ALL   010SIE  K6D 0V       IF                                             18000                        304822506
+SUSAP KJFKK6ECAMRN52ALL   020BOTONK6PC0E       TF                                                                          304832506
+SUSAP KJFKK6ECAMRN52ALL   030HOGGSK6EA0E       TF                                                                          304842506
+SUSAP KJFKK6ECAMRN52ALL   040PANZEK6EA0E       TF                                                                          304852506
+SUSAP KJFKK6ECAMRN52ALL   050KARRSK6EA0E       TF                                                                          304862506
+SUSAP KJFKK6ECAMRN52ALL   060CAMRNK6EA0EE      TF                                                                          304872506
+SUSAP KJFKK6FI04L  I      010AROKEK6PC0E  I    IF IHIQK6      22380125        PI  J 020000150018000                 0 NS   305781808
+SUSAP KJFKK6FI04L  I      020KRSTLK6PC0E  F    CF IHIQK6      2238006504400060PI  H 0150001500            JFK   K6D 0 NS   305792006
+SUSAP KJFKK6FI04L  I      030RW04LK6PG0GY M    CF IHIQK6      2238002004400045PI    00069             -300          0 NS   305802308
+SUSAP KJFKK6FI04L  I      040         0  M     CA                     0438        + 02000                           0 NS   305811808
+SUSAP KJFKK6FI04L  I      050DUFFYK6PC0EY      CF JFK K6      0620014806200120D   + 03000                           0 NS   305821310
+SUSAP KJFKK6FI04L  I      060DUFFYK6PC0EE  L   HM                     2420T010    + 03000                           0 NS   305831310
+SUSAP KJFKK6GRW04L   0120790440 N40372318W073470505         -0028300012046057200IIHIQ1                                     308521709
+SUSAP KJFKK6GRW04R   0084000440 N40373154W073461324         -0028400012000053200IIJFK3                                     308532308
+SUSAP KJFKK6GRW13L   0100001340 N40392337W073471475         -0027900013090758200IITLK2                                     308542504
+SUSAP KJFKK6GRW13R   0145111340 N40384378W073483739         -0028100013204455200R                                          308552506
+SUSAP KJFKK6GRW22L   0084002240 N40384285W073451750         -0028300012000053200IIIWY3                                     308562308
+SUSAP KJFKK6GRW22R   0120792240 N40383276W073461069         -0028100013342459200IIJOC1                                     308572308
+SUSAP KJFKK6GRW31L   0145113140 N40375728W073465479         -0028100013326458200IIMOH1                                     308582308
+SUSAP KJFKK6GRW31R   0100003140 N40384260W073454483         -0028100013102742200IIRTH1                                     308592504
+SUSAP KJFKK6IIHIQ1   011090RW04LN40390697W0734543940438N40373109W0734654890605 10890328300W01305700010                     308602308
+SUSAP KJFKK6IIIWY3   011090RW22LN40372749W0734616412238N40383293W0734519980477 09600452300W01305300013                     308612308
+SUSAP KJFKK6IIJFK3   010950RW04RN40385159W0734510670438N40374210W0734611031029 10050425300W01305300013                     308622308
+SUSAP KJFKK6IIJOC1   010950RW22RN40374448W0734643112212N40382128W0734613933177-11260550300W01305900009                     308632308
+SUSAP KJFKK6IIMOH1   011135RW31LN40385966W0734912453138N40375987W0734709411101 11030327300W01305800009                     308642308
+SUSAP KJFKK6IIRTH1   011150RW31RN40393079W0734731123138N40385033W0734551020561 08100420300W01304200010                     308652308
+SUSAP KJFKK6IITLK2   011150RW13LN40383069W0734518581338N40391475W0734704861328 11010390300W01305800010                     308662308
+SUSAER       B24         0100SIE  K6D 0V    O                         13100230     15000     45000                         559411709
+SUSAER       B24         0110FISSHK6EA0E    O                         134300221313 15000     45000                         559422504
+SUSAER       B24         0120DASHAK EA0E    O                         134301001343 15000     45000                         559432605
+SUSAER       B24         0130CORNEK EA0E    O                         134501001345 15000     45000                         559442504
+SUSAER       B24         0140JETERK EA0E    O                         134701001347 15000     45000                         559452605
+SUSAER       B24         0150WICKEK EA0E    O                         134901001349 15000     45000                         559462504
+SUSAER       B24         0160HAPVYK EA0E    O                         136000811351 15000     45000                         559472504
+SUSAER       B24         0170DIAANK EA0E    O                         134902851361 15000     45000                         559482504
+SUSAER       B24         0180BOJANK EA0E    O                         135700811354 15000     45000                         559492605
+SUSAER       B24         0190AGUNEK EA0E    O                         135801021359 15000     45000                         559502605
+SUSAER       B24         0200LYNUSK EA0E    O                         135301551360 15000     45000                         559512504
+SUSAER       B24         0210AZEZUK EA0E    O                         135402251356 15000     45000                         559522605
+SUSAER       B24         0220WEBBBK EA0EE   O                                 1358                                         559532504
+SUSAER       J95         0100DPK  K6D 0V    OH                        32000180     18000     45000                         579091709
+SUSAER       J95         0110HOBAMK6EA0E    OH                        320004243193 18000     45000                         579102010
+SUSAER       J95         0120GAYELK6EA0E    OH                        310001033193 18000     45000                         579112010
+SUSAER       J95         0130MSLINK6EA0E    OH                        310001263088 18000     45000                         579122010
+SUSAER       J95         0140STOMPK6EA0E    OH                        310004213088 18000     45000                         579132010
+SUSAER       J95         0150BUFFYK6EA0E    OH                        310002683088 18000     45000                         579142010
+SUSAER       J95         0160CFB  K6D 0VE   OH                                3088                                         579152010
+SUSAD        CCC   K6011455VDLW N40554663W072475589    N40554663W072475589W0130000851     NARCALVERTON                     250242304
+SUSAD        CFB   K6011220VDLW N42092697W076081130    N42092697W076081130W0100015831     NARBINGHAMTON                    250332609
+SUSAD        DPK   K6011770VDLW N40473036W073181324    N40473036W073181324W0120001171     NARDEER PARK                     251292407
+SUSAD        JFK   K6011590VDHW N40375838W073461701    N40375840W073461700W0120000102     NARKENNEDY                       254132609
+SUSAD        SIE   K6011480VTHW N39054383W074480124    N39054383W074480124W0090000082     NARSEA ISLE                      257882609
+SUSAD KJFKK6 IHIQ  K6011090 ITWN                   IHIQN40374382W073464058W0130000230     NARJOHN F KENNEDY INTL           263482308
+SUSAEAENRT   AGUNE K 0    W   B N38062900W072500200                       W0126     NAR           AGUNE                    274012504
+SUSAEAENRT   AZEZU K 0    W   B N37522810W072224320                       W0127     NAR           AZEZU                    283342605
+SUSAEAENRT   BOJAN K 0    W   B N38105400W072583400                       W0125     NAR           BOJAN                    292832605
+SUSAEAENRT   BUFFY K60    C   H N41562799W075364536                       W0119     NAR           BUFFY                    296982605
+SUSAEAENRT   CAMRN K60    C   B N40010229W073513981                       W0124     NAR           CAMRN                    300942605
+SUSAEAENRT   CANDR K60    C   H N40581555W074573538                       W0121     NAR           CANDR                    301102504
+SUSAEAENRT   CORNE K 0    W   B N38465800W074095200                       W0121     NAR           CORNE                    319422504
+SUSAEAENRT   DASHA K 0    W   B N38521909W074204037                       W0120     NAR           DASHA                    326222605
+SUSAEAENRT   DEEZZ K60    C     N41065200W073464000                       W0126     NAR           DEEZZ                    327752605
+SUSAEAENRT   DIAAN K 0    R   B N38261740W073290000                       W0124     NAR           DIAAN                    329352304
+SUSAEAENRT   FISSH K60    C   B N38532913W074230224                       W0120     NAR           FISSH                    352702504
+SUSAEAENRT   GAYEL K60    C   B N41242409W074212572                       W0124     NAR           GAYEL                    359542605
+SUSAEAENRT   HAPVY K 0    W   B N38304800W073373600                       W0123     NAR           HAPVY                    370462504
+SUSAEAENRT   HEERO K60    W     N41100788W074065609                       W0125     NAR           HEERO                    372912605
+SUSAEAENRT   HOBAM K60    C   H N40583417W073365685                       W0127     NAR           HOBAM                    378692504
+SUSAEAENRT   HOGGS K60    C   L N39345825W074161407                       W0122     NAR           HOGGS                    379272504
+SUSAEAENRT   JETER K 0    W   B N38413600W073590500                       W0122     NAR           JETER                    397792403
+SUSAEAENRT   KARRS K60    C   L N39502714W073590956                       W0123     NAR           KARRS                    408122605
+SUSAEAENRT   KURNL K60    W     N41120470W074273037                       W0124     NAR           KURNL                    424482504
+SUSAEAENRT   LYNUS K 0    R   B N38005290W072391446                       W0126     NAR           LYNUS                    435532605
+SUSAEAENRT   MSLIN K60    C   B N41293082W074331428                       W0124     NAR           MSLIN                    448342504
+SUSAEAENRT   PANZE K60    C   L N39403358W074100545                       W0122     NAR           PANZE                    466762605
+SUSAEAENRT   STOMP K60    C   H N41354678W074474779                       W0123     NAR           STOMP                    502012504
+SUSAEAENRT   TOWIN K60    C   B N40320676W075240136                       W0118     NAR           TOWIN                    512162504
+SUSAEAENRT   WEBBB K 0    W   B N37401756W071585533                       W0129     NAR           WEBBB                    532542403
+SUSAEAENRT   WICKE K 0    W   B N38361200W073481900                       W0122     NAR           WICKE                    536192605

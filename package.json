@@ -48,7 +48,8 @@
     "release:all": "pnpm run release && pnpm run android:bundle && pnpm run ios:release",
     "release:all:minor": "pnpm run release:minor && pnpm run android:bundle && pnpm run ios:release",
     "release:all:major": "pnpm run release:major && pnpm run android:bundle && pnpm run ios:release",
-    "check:skymess": "node scripts/check-skymess-updates.mjs"
+    "check:skymess": "node scripts/check-skymess-updates.mjs",
+    "data:cifp": "node scripts/fetch-cifp.mjs"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
