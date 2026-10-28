@@ -1,0 +1,17 @@
+{
+  "id": "ny-tma",
+  "name": "New York TMA (JFK, LaGuardia, Newark)",
+  "airports": [
+    "KJFK",
+    "KLGA",
+    "KEWR"
+  ],
+  "radiusNm": 60,
+  "vfrAirports": {
+    "radiusNm": 40,
+    "types": [
+      "large_airport",
+      "medium_airport"
+    ]
+  }
+}

@@ -18,6 +18,7 @@ import {
   destination,
   distanceM,
   distanceNm,
+  declinationDeg,
   magToTrue,
   normDeg,
   M_PER_FT,
@@ -174,7 +175,7 @@ interface RawAirwayPoint {
   maxAltFt: number | null;
 }
 
-interface CifpRecords {
+export interface CifpRecords {
   airac: string | null;
   airports: Map<string, RawAirport>;
   runways: RawRunway[];
@@ -314,8 +315,10 @@ export function readCifpRecords(text: string): CifpRecords {
 // ─── Area import ─────────────────────────────────────────────────────────────
 
 export interface CifpAreaOptions {
-  /** Airports whose runways and procedures are imported (ICAO). */
+  /** Airports whose runways are imported (ICAO). The first is the main airport. */
   airports: string[];
+  /** Airports whose procedures are imported too; default: all of `airports`. */
+  proceduresFor?: string[];
   /** Fixes and airways within this distance of the pack reference are included. */
   radiusNm: number;
   /** Area centre; default: the first airport's reference point. */
@@ -350,9 +353,13 @@ export function importCifpArea(text: string | CifpRecords, options: CifpAreaOpti
     if (a) airports.push(a);
     else warnings.push(`${icao}: not in CIFP`);
   }
-  if (airports.length === 0) throw new Error('none of the requested airports are in the CIFP file');
-  const reference = options.reference ?? airports[0]!.arp;
-  const magVar = airports[0]!.magVar;
+  const first = airports[0];
+  if (!first && !options.reference) {
+    throw new Error('none of the requested airports are in the CIFP file and no reference point was given');
+  }
+  const reference = options.reference ?? first!.arp;
+  // Charted variation of the main airport; WMM when the area has no CIFP airport.
+  const magVar = first ? first.magVar : Math.round(declinationDeg(reference, new Date(options.retrieved)) * 10) / 10;
   const inArea = (p: LatLon) => distanceNm(reference, p) <= options.radiusNm;
   const wanted = new Set(airports.map((a) => a.icao));
 
@@ -426,8 +433,9 @@ export function importCifpArea(text: string | CifpRecords, options: CifpAreaOpti
 
   // ── Procedures ───────────────────────────────────────────────────────────
   const groups = new Map<string, RawLeg[]>();
+  const withProcedures = new Set((options.proceduresFor ?? options.airports).map((a) => a.toUpperCase()));
   for (const l of rec.legs) {
-    if (!wanted.has(l.airport)) continue;
+    if (!withProcedures.has(l.airport)) continue;
     const key = `${l.airport}|${l.kind}|${l.ident}|${l.routeType}|${l.transition}`;
     const g = groups.get(key);
     if (g) g.push(l);

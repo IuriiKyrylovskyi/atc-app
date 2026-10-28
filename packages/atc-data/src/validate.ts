@@ -4,7 +4,7 @@
  * Errors block publishing; warnings are reported for review (e.g. a procedure
  * that references a fix not in this pack yet).
  */
-import { courseTo, distanceM, distanceNm, angleDiffDeg, type AirspacePack } from '@atc-app/sim';
+import { courseTo, distanceM, distanceNm, angleDiffDeg, type AirspacePack, type Runway } from '@atc-app/sim';
 import { airspacePackSchema, PUBLISHABLE_LICENCES } from './schema';
 
 export interface PackIssue {
@@ -45,6 +45,23 @@ function duplicates(values: string[]): string[] {
   const dup = new Set<string>();
   for (const v of values) (seen.has(v) ? dup : seen).add(v);
   return [...dup];
+}
+
+/** Length/heading consistency problems of one runway (empty when it is fine). */
+export function runwayGeometryIssues(r: Runway, options: ValidateOptions = {}): string[] {
+  const issues: string[] = [];
+  const opt = { ...DEFAULTS, ...options };
+  const expected = r.lengthM - (r.displacedM ?? 0);
+  const actual = distanceM(r.threshold, r.end);
+  const tol = Math.max(opt.runwayLengthToleranceM, r.lengthM * opt.runwayLengthToleranceFraction);
+  if (Math.abs(actual - expected) > tol) {
+    issues.push(`${r.airport}/${r.id}: threshold→end is ${actual.toFixed(0)} m, expected ${expected.toFixed(0)} m (±${tol.toFixed(0)})`);
+  }
+  const dHdg = Math.abs(angleDiffDeg(r.headingTrue, courseTo(r.threshold, r.end)));
+  if (dHdg > opt.runwayHeadingToleranceDeg) {
+    issues.push(`${r.airport}/${r.id}: heading ${r.headingTrue}° differs from threshold→end course by ${dHdg.toFixed(2)}°`);
+  }
+  return issues;
 }
 
 export function validatePack(input: unknown, options: ValidateOptions = {}): ValidationResult {
@@ -107,22 +124,7 @@ export function validatePack(input: unknown, options: ValidateOptions = {}): Val
     if (!airports.has(r.airport)) {
       errors.push({ path, message: `runway ${r.id} references unknown airport ${r.airport}` });
     }
-    const expected = r.lengthM - (r.displacedM ?? 0);
-    const actual = distanceM(r.threshold, r.end);
-    const tol = Math.max(opt.runwayLengthToleranceM, r.lengthM * opt.runwayLengthToleranceFraction);
-    if (Math.abs(actual - expected) > tol) {
-      errors.push({
-        path,
-        message: `${r.airport}/${r.id}: threshold→end is ${actual.toFixed(0)} m, expected ${expected.toFixed(0)} m (±${tol.toFixed(0)})`,
-      });
-    }
-    const dHdg = Math.abs(angleDiffDeg(r.headingTrue, courseTo(r.threshold, r.end)));
-    if (dHdg > opt.runwayHeadingToleranceDeg) {
-      errors.push({
-        path,
-        message: `${r.airport}/${r.id}: heading ${r.headingTrue}° differs from threshold→end course by ${dHdg.toFixed(2)}°`,
-      });
-    }
+    for (const message of runwayGeometryIssues(r, opt)) errors.push({ path, message });
   });
 
   // ── References from procedures / airways ─────────────────────────────────
