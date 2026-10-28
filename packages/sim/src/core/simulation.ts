@@ -10,6 +10,8 @@
  *   rewind, reset and branch (ATC_ARCHITECTURE.md §14.4) for free.
  * - Aircraft can be scheduled to appear at a sim time (scenario traffic), which
  *   keeps scripted sessions deterministic and part of the saved state.
+ * - A separation monitor runs every second of sim time: losses of separation
+ *   and STCA predictions become events and are listed in every snapshot.
  * - No DOM, no timers: whoever owns the sim decides when to call `advance()`
  *   (a worker loop, the Academy server, or a test).
  */
@@ -18,8 +20,17 @@ import type { LatLon } from '../geo/geodesy';
 import { normDeg } from '../units';
 import { performanceFor } from '../aircraft/performance';
 import { stepAircraft, type Wind } from '../aircraft/dynamics';
+import {
+  ALERT_HOLD_S,
+  assessPair,
+  pairKey,
+  TERMINAL_SEPARATION,
+  type PairState,
+  type SeparationConfig,
+} from '../safety/separation';
 import type {
   AircraftSpawn,
+  Conflict,
   AircraftState,
   AirspacePack,
   Clearance,
@@ -39,6 +50,8 @@ export interface SimConfig {
   wind?: Wind;
   /** Magnetic variation (°E) when there is no pack; packs carry their own. */
   magVar?: number;
+  /** Separation minima and STCA look-ahead; default terminal 3 NM / 1 000 ft / 120 s. */
+  separation?: Partial<SeparationConfig>;
 }
 
 interface PendingMessage {
@@ -60,6 +73,8 @@ export interface SimState {
   aircraft: AircraftState[];
   pending: PendingMessage[];
   scheduled: ScheduledSpawn[];
+  /** Pairs the separation monitor is alerting on. */
+  conflicts: PairState[];
   log: SimEvent[];
   /** Index into `log` of the first event not yet returned by `snapshot()`. */
   snapshotCursor: number;
@@ -78,7 +93,10 @@ const CALM: Wind = { fromDeg: 0, speedKt: 0 };
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
 export class Simulation {
-  readonly config: Readonly<Required<Omit<SimConfig, 'pack'>>> & { pack?: AirspacePack };
+  readonly config: Readonly<Required<Omit<SimConfig, 'pack' | 'separation'>>> & {
+    pack?: AirspacePack;
+    separation: SeparationConfig;
+  };
   private state: SimState;
   private rng: Rng;
   private readonly fixes = new Map<string, LatLon>();
@@ -91,6 +109,7 @@ export class Simulation {
       pilotDelayS: config.pilotDelayS ?? DEFAULT_PILOT_DELAY,
       wind: config.wind ?? CALM,
       magVar: config.pack?.meta.magVar ?? config.magVar ?? 0,
+      separation: { ...TERMINAL_SEPARATION, ...config.separation },
     };
     for (const f of config.pack?.fixes ?? []) this.fixes.set(f.id, f.pos);
     this.state = state
@@ -103,6 +122,7 @@ export class Simulation {
           aircraft: [],
           pending: [],
           scheduled: [],
+          conflicts: [],
           log: [],
           snapshotCursor: 0,
         };
@@ -149,6 +169,7 @@ export class Simulation {
     this.state.step += 1;
     // After the step, so an aircraft scheduled at t is on the scope at t.
     this.spawnDue();
+    if (this.state.step % Math.max(1, Math.round(1 / dt)) === 0) this.monitorSeparation();
     this.state.rngState = this.rng.state;
   }
 
@@ -213,7 +234,88 @@ export class Simulation {
     this.state.aircraft = this.state.aircraft.filter((a) => a.callsign !== callsign);
     if (this.state.aircraft.length !== before) {
       this.log({ t: this.time, type: 'aircraft_removed', callsign });
+      for (const p of this.state.conflicts) {
+        if (p.a === callsign || p.b === callsign) this.endPair(p);
+      }
+      this.state.conflicts = this.state.conflicts.filter((p) => p.a !== callsign && p.b !== callsign);
     }
+  }
+
+  // ── Separation ───────────────────────────────────────────────────────────
+
+  private monitorSeparation(): void {
+    const now = this.time;
+    const cfg = this.config.separation;
+    const acs = this.state.aircraft;
+    const pairs = new Map(this.state.conflicts.map((p) => [`${p.a}|${p.b}`, p]));
+    const seen = new Set<string>();
+
+    for (let i = 0; i < acs.length; i++) {
+      for (let j = i + 1; j < acs.length; j++) {
+        const g = assessPair(acs[i]!, acs[j]!, cfg);
+        if (!g.loss && g.inS === null) continue;
+        const [a, b] = pairKey(acs[i]!.callsign, acs[j]!.callsign);
+        const key = `${a}|${b}`;
+        seen.add(key);
+        const current: Conflict = {
+          a,
+          b,
+          kind: g.loss ? 'loss' : 'predicted',
+          inS: g.inS ?? 0,
+          lateralNm: Math.round(g.lateralNm * 100) / 100,
+          verticalFt: Math.round(g.verticalFt),
+        };
+        let p = pairs.get(key);
+        if (!p) {
+          p = {
+            a, b, alertSince: now, lossSince: null, lastActive: now,
+            minLateralNm: current.lateralNm, minVerticalFt: current.verticalFt, current,
+          };
+          this.state.conflicts.push(p);
+          this.log({ t: now, type: 'conflict_alert', a, b, inS: current.inS });
+        }
+        p.lastActive = now;
+        p.current = current;
+        if (g.loss) {
+          if (p.lossSince === null) {
+            p.lossSince = now;
+            p.minLateralNm = current.lateralNm;
+            p.minVerticalFt = current.verticalFt;
+            this.log({ t: now, type: 'separation_lost', a, b, lateralNm: current.lateralNm, verticalFt: current.verticalFt });
+          }
+          p.minLateralNm = Math.min(p.minLateralNm, current.lateralNm);
+          p.minVerticalFt = Math.min(p.minVerticalFt, current.verticalFt);
+        } else {
+          this.restore(p);
+        }
+      }
+    }
+
+    const keep: PairState[] = [];
+    for (const p of this.state.conflicts) {
+      if (seen.has(`${p.a}|${p.b}`)) {
+        keep.push(p);
+        continue;
+      }
+      this.restore(p);
+      if (now - p.lastActive >= ALERT_HOLD_S) this.log({ t: now, type: 'conflict_ended', a: p.a, b: p.b });
+      else keep.push(p);
+    }
+    this.state.conflicts = keep;
+  }
+
+  private restore(p: PairState): void {
+    if (p.lossSince === null) return;
+    this.log({
+      t: this.time, type: 'separation_restored', a: p.a, b: p.b,
+      durationS: this.time - p.lossSince, minLateralNm: p.minLateralNm, minVerticalFt: p.minVerticalFt,
+    });
+    p.lossSince = null;
+  }
+
+  private endPair(p: PairState): void {
+    this.restore(p);
+    this.log({ t: this.time, type: 'conflict_ended', a: p.a, b: p.b });
   }
 
   getAircraft(callsign: string): AircraftState | undefined {
@@ -319,7 +421,12 @@ export class Simulation {
   snapshot(): Snapshot {
     const events = this.state.log.slice(this.state.snapshotCursor);
     this.state.snapshotCursor = this.state.log.length;
-    return { t: this.time, aircraft: clone(this.state.aircraft), events: clone(events) };
+    return {
+      t: this.time,
+      aircraft: clone(this.state.aircraft),
+      conflicts: this.state.conflicts.map((p) => ({ ...p.current })),
+      events: clone(events),
+    };
   }
 
   get eventLog(): readonly SimEvent[] {

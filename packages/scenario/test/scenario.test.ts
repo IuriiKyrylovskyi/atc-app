@@ -2,7 +2,16 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { destination, Simulation, type AirspacePack, type Procedure } from '@atc-app/sim';
-import { arrivalOnStar, buildScenario, NY_ARRIVALS, scenariosForPack, starRoute, type ScenarioScript } from '../src';
+import {
+  arrivalOnStar,
+  buildScenario,
+  flightOnRoute,
+  NY_ARRIVALS,
+  NY_CONFLICTS,
+  scenariosForPack,
+  starRoute,
+  type ScenarioScript,
+} from '../src';
 
 const REF = { lat: 40, lon: -74 };
 const fix = (id: string, brg: number, nm: number) => ({ id, kind: 'waypoint' as const, pos: destination(REF, brg, nm * 1852) });
@@ -117,5 +126,36 @@ describe.skipIf(!nyFile)('NY arrivals on the built ny-tma pack', () => {
     }
     // Everyone is descending towards (or at) the cleared level.
     for (const ac of snap.aircraft) expect(ac.altFt).toBeLessThan(19_000);
+    // The arrival push is built conflict-free.
+    expect(sim.eventLog.some((e) => e.type === 'conflict_alert')).toBe(false);
+  });
+
+  it('conflict drill: both set-ups lose separation if nobody acts, the control pair never alerts', () => {
+    expect(scenariosForPack('ny-tma').map((s) => s.id)).toContain('ny-conflicts');
+    const built = buildScenario(NY_CONFLICTS, ny!);
+    const sim = new Simulation(built.config);
+    for (const t of built.traffic) sim.schedule(t.atS, t.spawn);
+    sim.advance(900);
+    const pairs = (type: string) =>
+      sim.eventLog.flatMap((e) => (e.type === type && 'a' in e ? [`${e.a}/${e.b}`] : []));
+    expect(pairs('separation_lost').sort()).toEqual(['ASA8/FFT1427', 'NKS318/SWA2214']);
+    expect(pairs('conflict_alert')).not.toContain('ENY3810/SKW5520');
+    // STCA warns well before the loss.
+    const alert = sim.eventLog.find((e) => e.type === 'conflict_alert' && e.a === 'NKS318');
+    const lost = sim.eventLog.find((e) => e.type === 'separation_lost' && e.a === 'NKS318');
+    expect(lost!.t - alert!.t).toBeGreaterThanOrEqual(60);
+  });
+});
+
+describe('flightOnRoute', () => {
+  it('spawns over the from-fix heading for the first route fix', () => {
+    const s = flightOnRoute(pack, {
+      callsign: 'OVR1', icaoType: 'B738', fromFix: 'ENTRY', route: ['MIDDL', 'FINAL'], altFt: 12_000, casKt: 250,
+    });
+    expect(s.pos).toEqual(pack.fixes[0]!.pos);
+    expect(s.headingTrue).toBeCloseTo(180, 3);
+    expect(s.route).toEqual(['MIDDL', 'FINAL']);
+    expect(() => flightOnRoute(pack, { ...s, fromFix: 'ENTRY', route: [] })).toThrow(/empty route/);
+    expect(() => flightOnRoute(pack, { ...s, fromFix: 'NOPE', route: ['FINAL'] })).toThrow(/NOPE is not in pack/);
   });
 });

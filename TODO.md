@@ -83,7 +83,11 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [x] Text command syntax (`DAL123 FL120 H240 S220`) → `Message` + validation (`packages/voice` command.ts): FL/A/C/D, H/L/R, TL/TR, S/M, DCT, SQ, RON; callsign by unique ending or selection; climb/descend sanity check
 - [x] Scope command line: live phraseology preview, ↑/↓ history, comms log (instruction, readback, pilot "unable" from sim rejections); click a target to command it
 - [ ] Command line: Tab-complete callsigns / fixes, approach clearances (ILS, visual), "expedite", vertical rate
-- [ ] Separation monitor (3/5 NM, 1000 ft) + STCA colouring, MSAW, area infringement
+- [x] Separation monitor in the sim (3 NM / 1 000 ft terminal, configurable) + STCA: linear prediction with cleared-level cut-off, 120 s look-ahead, events (alert, lost, restored with min distance/duration, ended), conflicts in every snapshot
+- [x] Scope: red targets/data blocks with blinking "CA", pair line (dashed predicted / solid lost) with time-to-loss or distance label, CA count, CA/LOS/SEP lines in the comms log
+- [x] Conflict drill scenario over COL (head-on, crossing, 1 000 ft control pair) + scenario picker on the scope
+- [ ] Wake turbulence separation on final, 5 NM enroute minima per sector, turn-aware STCA prediction
+- [ ] MSAW (needs MVA data) and area infringement (needs UC/UR airspace)
 - [x] Route `/scope/:packId` behind a feature flag (dev builds or `VITE_FEATURE_SCOPE=true`), no account needed
 - [ ] Open the scope from Control Center
 - [ ] Performance check: 100 aircraft at 60 fps on a mid-range laptop

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { destination, M_PER_NM, type AircraftState, type AirspacePack, type Snapshot } from '@atc-app/sim';
+import { destination, M_PER_NM, type AircraftState, type AirspacePack, type Conflict, type Snapshot } from '@atc-app/sim';
 import {
   buildVideoMap,
+  conflictLabel,
   dataBlockLines,
   DECLUTTER,
   DEFAULT_TRAFFIC_OPTIONS,
@@ -171,7 +172,12 @@ describe('traffic', () => {
     target: { altFt: 11_000, headingTrue: null, turn: null, casKt: 290, mach: null, vsFpm: null, directFix: 'X', route: [] },
     ...over,
   });
-  const snap = (t: number, list: AircraftState[]): Snapshot => ({ t, aircraft: list, events: [] });
+  const snap = (t: number, list: AircraftState[], conflicts: Snapshot['conflicts'] = []): Snapshot => ({
+    t,
+    aircraft: list,
+    conflicts,
+    events: [],
+  });
 
   it('formats the full data block', () => {
     expect(dataBlockLines(aircraft())).toEqual(['DAL1192', '160↓110 29', 'B739 KJFK']);
@@ -224,5 +230,25 @@ describe('traffic', () => {
     pic.setLeader('DAL1192', 1);
     const moved = new ScopeRenderer(fakeCtx()).drawTraffic(view, pic.list(), DEFAULT_TRAFFIC_OPTIONS);
     expect(hitTest(moved.hits, { x: target.x - 40, y: target.y + 25 })).toBe('DAL1192');
+  });
+
+  it('tags conflicting aircraft with a blinking CA and labels the pair', () => {
+    const pic = new TrafficPicture(map.projection);
+    const other = aircraft({ callsign: 'UAL1', pos: destination(REF, 10, 10 * M_PER_NM) });
+    const predicted: Conflict = { a: 'DAL1192', b: 'UAL1', kind: 'predicted', inS: 46, lateralNm: 1.7, verticalFt: 0 };
+    pic.update(snap(0, [aircraft(), other], [predicted]));
+    expect(pic.conflicts).toEqual([predicted]);
+    const view = new ScopeView({ widthPx: 1000, heightPx: 800, rangeNm: 20 });
+
+    const on = fakeCtx();
+    new ScopeRenderer(on).drawTraffic(view, pic.list(), DEFAULT_TRAFFIC_OPTIONS, pic.conflicts);
+    expect(on.texts).toEqual(expect.arrayContaining(['CA 46s', 'DAL1192 CA', 'UAL1 CA']));
+
+    const off = fakeCtx();
+    new ScopeRenderer(off).drawTraffic(view, pic.list(), { ...DEFAULT_TRAFFIC_OPTIONS, blinkOn: false }, pic.conflicts);
+    expect(off.texts).toEqual(expect.arrayContaining(['CA 46s', 'DAL1192', 'UAL1']));
+    expect(off.texts).not.toContain('DAL1192 CA');
+
+    expect(conflictLabel({ ...predicted, kind: 'loss', lateralNm: 2.43, verticalFt: 600 })).toBe('2.4 NM 06');
   });
 });

@@ -9,7 +9,7 @@
  * Declutter follows the range knob: fewer symbols and labels as the range grows,
  * and labels never overlap (first come, first placed, navaids before waypoints).
  */
-import { M_PER_NM, type LocalXY } from '@atc-app/sim';
+import { M_PER_NM, type Conflict, type LocalXY } from '@atc-app/sim';
 import type { ScopeView, ScreenXY } from './view';
 import type { MapFix, VideoMap } from './videomap';
 import { dataBlockLines, leaderVector, type TrafficTrack } from './traffic';
@@ -316,10 +316,16 @@ export class ScopeRenderer {
   }
 
   /**
-   * Draws traffic on top of the video map: history dots, speed vectors, leader
-   * lines, targets and full data blocks. Returns hit boxes for selection.
+   * Draws traffic on top of the video map: history dots, speed vectors, conflict
+   * pair lines, leader lines, targets and full data blocks (red with a blinking
+   * "CA" while in conflict alert). Returns hit boxes for selection.
    */
-  drawTraffic(view: ScopeView, tracks: readonly TrafficTrack[], opts: TrafficOptions): TrafficDrawResult {
+  drawTraffic(
+    view: ScopeView,
+    tracks: readonly TrafficTrack[],
+    opts: TrafficOptions,
+    conflicts: readonly Conflict[] = []
+  ): TrafficDrawResult {
     const ctx = this.ctx;
     const hits: TrafficHit[] = [];
     const S = (p: LocalXY): ScreenXY => view.toScreen(p);
@@ -362,14 +368,41 @@ export class ScopeRenderer {
       ctx.stroke();
     }
 
+    // ── Conflict pairs: dashed while predicted, solid once lost ───────────
+    const inConflict = new Set<string>();
+    const byCallsign = new Map(tracks.map((t) => [t.callsign, t]));
+    ctx.strokeStyle = TRAFFIC_PALETTE.alert;
+    ctx.fillStyle = TRAFFIC_PALETTE.alert;
+    ctx.lineWidth = 1;
+    for (const c of conflicts) {
+      inConflict.add(c.a);
+      inConflict.add(c.b);
+      const ta = byCallsign.get(c.a);
+      const tb = byCallsign.get(c.b);
+      if (!ta || !tb) continue;
+      const p = S(ta.xy);
+      const q = S(tb.xy);
+      ctx.setLineDash(c.kind === 'loss' ? [] : [4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(q.x, q.y);
+      ctx.stroke();
+      const label = conflictLabel(c);
+      ctx.textAlign = 'center';
+      ctx.fillText(label, (p.x + q.x) / 2, (p.y + q.y) / 2 - 8);
+      ctx.textAlign = 'left';
+    }
+    ctx.setLineDash([]);
+
     // ── Targets, leader lines, data blocks ────────────────────────────────
     const lineH = 12;
     for (const t of visible) {
       const s = S(t.xy);
       const selected = t.callsign === opts.selected;
-      const colour = selected ? TRAFFIC_PALETTE.selected : TRAFFIC_PALETTE.dataBlock;
+      const alert = inConflict.has(t.callsign);
+      const colour = alert ? TRAFFIC_PALETTE.alert : selected ? TRAFFIC_PALETTE.selected : TRAFFIC_PALETTE.dataBlock;
 
-      ctx.fillStyle = selected ? TRAFFIC_PALETTE.selected : TRAFFIC_PALETTE.target;
+      ctx.fillStyle = alert ? TRAFFIC_PALETTE.alert : selected ? TRAFFIC_PALETTE.selected : TRAFFIC_PALETTE.target;
       ctx.beginPath();
       ctx.arc(s.x, s.y, TARGET_RADIUS_PX, 0, Math.PI * 2);
       ctx.fill();
@@ -389,7 +422,9 @@ export class ScopeRenderer {
       });
 
       const lines = dataBlockLines(t.ac);
+      // Width without the tag, so the block does not jump while "CA" blinks.
       const w = Math.max(...lines.map((l) => ctx.measureText(l).width));
+      if (alert && opts.blinkOn) lines[0] = `${lines[0]} CA`;
       const h = lineH * lines.length;
       const { dx, dy } = leaderVector(t.leader);
       const start = { x: s.x + dx * (TARGET_RADIUS_PX + 2), y: s.y + dy * (TARGET_RADIUS_PX + 2) };
@@ -417,6 +452,8 @@ export const TRAFFIC_PALETTE = {
   dataBlock: '#8fe3a8',
   selected: '#ffd27a',
   vector: '#8fe3a8',
+  /** Conflict alert (STCA) and loss of separation. */
+  alert: '#ff5a4f',
   /** Newest → oldest. */
   history: ['#5d8fae', '#4f7f9c', '#45718b', '#3c637a', '#34566a', '#2d4b5c', '#28414f', '#233944'],
 } as const;
@@ -430,9 +467,18 @@ export interface TrafficOptions {
   vectorMinutes: number;
   historyDots: number;
   selected: string | null;
+  /** Blink phase for the "CA" tag (the UI toggles it about twice a second). */
+  blinkOn: boolean;
 }
 
-export const DEFAULT_TRAFFIC_OPTIONS: TrafficOptions = { vectorMinutes: 1, historyDots: 5, selected: null };
+export const DEFAULT_TRAFFIC_OPTIONS: TrafficOptions = { vectorMinutes: 1, historyDots: 5, selected: null, blinkOn: true };
+
+/** Pair line label: distance / height difference once lost, time to loss before. */
+export function conflictLabel(c: Conflict): string {
+  return c.kind === 'loss'
+    ? `${c.lateralNm.toFixed(1)} NM ${String(Math.round(c.verticalFt / 100)).padStart(2, '0')}`
+    : `CA ${Math.round(c.inS)}s`;
+}
 
 /** Screen-space box (CSS px) that selects an aircraft when clicked. */
 export interface TrafficHit {

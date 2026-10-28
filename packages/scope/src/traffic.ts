@@ -6,7 +6,14 @@
  * per-track display settings (data block leader direction) that belong to the
  * controller, not the sim.
  */
-import { normDeg, type AircraftState, type LocalXY, type Snapshot, type StereographicProjection } from '@atc-app/sim';
+import {
+  normDeg,
+  type AircraftState,
+  type Conflict,
+  type LocalXY,
+  type Snapshot,
+  type StereographicProjection,
+} from '@atc-app/sim';
 
 /**
  * Data block position around the target, numpad layout as on STARS / most
@@ -36,6 +43,8 @@ export class TrafficPicture {
   private readonly tracks = new Map<string, TrafficTrack>();
   /** Sim time of the latest sweep, s. */
   t = 0;
+  /** Pairs in conflict alert at the latest sweep. */
+  conflicts: Conflict[] = [];
 
   constructor(
     private readonly projection: StereographicProjection,
@@ -45,6 +54,7 @@ export class TrafficPicture {
   /** Applies one radar sweep. Aircraft missing from the snapshot are dropped. */
   update(snapshot: Snapshot): void {
     this.t = snapshot.t;
+    this.conflicts = snapshot.conflicts;
     const seen = new Set<string>();
     for (const ac of snapshot.aircraft) {
       seen.add(ac.callsign);
@@ -81,6 +91,7 @@ export class TrafficPicture {
 
   clear(): void {
     this.tracks.clear();
+    this.conflicts = [];
   }
 }
 

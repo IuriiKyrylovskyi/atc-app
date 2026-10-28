@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   angleDiffDeg,
+  assessPair,
   createPortPair,
   destination,
   distanceNm,
@@ -10,6 +11,7 @@ import {
   SimClient,
   Simulation,
   turnRateDegS,
+  type AircraftState,
   type AirspacePack,
   type SimConfig,
 } from '../src';
@@ -276,5 +278,93 @@ describe('routes and scheduled traffic', () => {
     restored.advance(0.5);
     expect(restored.getAircraft('LATE1')).toBeDefined();
     expect(restored.eventLog.find((e) => e.type === 'aircraft_added')!.t).toBe(30);
+  });
+});
+
+describe('separation monitor / STCA', () => {
+  const NM = 1852;
+  const state = (over: Partial<AircraftState> & { altFt: number }): AircraftState => ({
+    callsign: 'X', icaoType: 'A320', wake: 'M', squawk: '2000', origin: 'scenario',
+    pos: ORIGIN, headingTrue: 0, trackTrue: 0, casKt: 250, tasKt: 300, gsKt: 300, mach: 0.5, vsFpm: 0,
+    target: { altFt: over.altFt, headingTrue: 0, turn: null, casKt: 250, mach: null, vsFpm: null, directFix: null, route: [] },
+    ...over,
+  });
+  // Head-on on the meridian: A northbound at the origin, B southbound 20 NM north.
+  const north = (altFt: number, over: Partial<AircraftState> = {}) => state({ callsign: 'AAA1', altFt, ...over });
+  const south = (altFt: number, over: Partial<AircraftState> = {}) =>
+    state({ callsign: 'BBB2', altFt, pos: destination(ORIGIN, 0, 20 * NM), headingTrue: 180, trackTrue: 180, ...over });
+
+  it('predicts a head-on loss when closing below 3 NM at the same level', () => {
+    const g = assessPair(north(10_000), south(10_000));
+    expect(g.loss).toBe(false);
+    expect(g.lateralNm).toBeCloseTo(20, 1);
+    // 600 kt closure: 17 NM to go = 102 s, sampled every 2 s.
+    expect(g.inS).toBe(104);
+  });
+
+  it('keeps quiet at 1 000 ft apart and beyond the look-ahead', () => {
+    expect(assessPair(north(10_000), south(11_000)).inS).toBeNull();
+    const far = south(10_000, { pos: destination(ORIGIN, 0, 40 * NM) });
+    expect(assessPair(north(10_000), far).inS).toBeNull(); // 222 s away > 120 s
+  });
+
+  it('uses the cleared level: a descent that stops 1 000 ft above is no conflict', () => {
+    const stopping = south(13_000, { vsFpm: -2000, target: { ...south(0).target, altFt: 11_000 } });
+    expect(assessPair(north(10_000), stopping).inS).toBeNull();
+    const through = south(13_000, { vsFpm: -2000, target: { ...south(0).target, altFt: 8000 } });
+    expect(assessPair(north(10_000), through).inS).not.toBeNull();
+  });
+
+  it('reports a loss right now', () => {
+    const close = south(10_500, { pos: destination(ORIGIN, 90, 2 * NM) });
+    expect(assessPair(north(10_000), close)).toMatchObject({ loss: true, inS: 0, verticalFt: 500 });
+  });
+
+  // 30 NM apart, ~580 kt closure: alert from ~47 s (120 s look-ahead), loss at ~167 s.
+  it('logs alert → loss → restored → ended, and lists conflicts in the snapshot', () => {
+    const sim = new Simulation({ seed: 1, pack, pilotDelayS: [0, 0] });
+    sim.addAircraft({ callsign: 'BBB2', icaoType: 'A320', pos: destination(ORIGIN, 0, 30 * NM), altFt: 10_000, headingTrue: 180, casKt: 250 });
+    sim.addAircraft({ callsign: 'AAA1', icaoType: 'A320', pos: ORIGIN, altFt: 10_000, headingTrue: 0, casKt: 250 });
+    sim.advance(10);
+    expect(sim.snapshot().conflicts).toEqual([]);
+
+    sim.advance(90);
+    const alerting = sim.snapshot().conflicts;
+    expect(alerting).toHaveLength(1);
+    expect(alerting[0]).toMatchObject({ a: 'AAA1', b: 'BBB2', kind: 'predicted' });
+
+    sim.advance(400);
+    const types = sim.eventLog
+      .filter((e) => e.type.startsWith('conflict') || e.type.startsWith('separation'))
+      .map((e) => e.type);
+    expect(types).toEqual(['conflict_alert', 'separation_lost', 'separation_restored', 'conflict_ended']);
+    const restored = sim.eventLog.find((e) => e.type === 'separation_restored');
+    expect(restored!.type === 'separation_restored' && restored!.minLateralNm).toBeLessThan(0.5);
+    expect(sim.snapshot().conflicts).toEqual([]);
+  });
+
+  it('a timely vertical clearance resolves the alert without a loss', () => {
+    const sim = new Simulation({ seed: 1, pack, pilotDelayS: [0, 0] });
+    sim.addAircraft({ callsign: 'BBB2', icaoType: 'A320', pos: destination(ORIGIN, 0, 30 * NM), altFt: 10_000, headingTrue: 180, casKt: 250 });
+    sim.addAircraft({ callsign: 'AAA1', icaoType: 'A320', pos: ORIGIN, altFt: 10_000, headingTrue: 0, casKt: 250 });
+    sim.advance(60);
+    expect(sim.snapshot().conflicts).toHaveLength(1);
+    sim.issue({ to: 'AAA1', clearances: [{ kind: 'altitude', altFt: 9000 }] });
+    sim.advance(400);
+    const types = sim.eventLog.map((e) => e.type);
+    expect(types).toContain('conflict_alert');
+    expect(types).not.toContain('separation_lost');
+    expect(types).toContain('conflict_ended');
+  });
+
+  it('ends the pair when an aircraft leaves', () => {
+    const sim = new Simulation({ seed: 1, pack, pilotDelayS: [0, 0] });
+    sim.addAircraft({ callsign: 'AAA1', icaoType: 'A320', pos: ORIGIN, altFt: 10_000, headingTrue: 0, casKt: 250 });
+    sim.addAircraft({ callsign: 'BBB2', icaoType: 'A320', pos: destination(ORIGIN, 90, 1 * NM), altFt: 10_000, headingTrue: 0, casKt: 250 });
+    sim.advance(1);
+    expect(sim.snapshot().conflicts[0]!.kind).toBe('loss');
+    sim.removeAircraft('BBB2');
+    expect(sim.snapshot().conflicts).toEqual([]);
+    expect(sim.eventLog.slice(-2).map((e) => e.type)).toEqual(['separation_restored', 'conflict_ended']);
   });
 });
