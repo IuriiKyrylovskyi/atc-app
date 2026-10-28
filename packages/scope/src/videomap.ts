@@ -12,6 +12,7 @@ import {
   type LatLon,
   type LocalXY,
 } from '@atc-app/sim';
+import { centroid, type MapArea } from './sectors';
 
 export interface MapFix {
   id: string;
@@ -53,6 +54,10 @@ export interface VideoMap {
   runways: MapRunway[];
   fixes: MapFix[];
   airways: MapAirway[];
+  /** Control sectors (kind "sector"). */
+  sectors: MapArea[];
+  /** Every other area: CTR / TMA, restricted, danger, … */
+  areas: MapArea[];
 }
 
 export interface VideoMapOptions {
@@ -102,6 +107,19 @@ export function buildVideoMap(pack: AirspacePack, options: VideoMapOptions = {})
     }
   }
 
+  const areas: MapArea[] = (pack.areas ?? []).map((a) => {
+    const polygon = a.polygon.map(L);
+    return {
+      id: a.id,
+      kind: a.kind,
+      ...(a.name ? { name: a.name } : {}),
+      polygon,
+      floorFt: a.floorFt,
+      ceilingFt: a.ceilingFt,
+      labelAt: centroid(polygon),
+    };
+  });
+
   return {
     packId: pack.meta.id,
     name: pack.meta.name,
@@ -115,5 +133,7 @@ export function buildVideoMap(pack: AirspacePack, options: VideoMapOptions = {})
       .filter((f) => f.kind !== 'runway' && f.kind !== 'airport')
       .map((f) => ({ id: f.id, kind: f.kind, xy: L(f.pos), onRoute: onRoute.has(f.id) })),
     airways,
+    sectors: areas.filter((a) => a.kind === 'sector'),
+    areas: areas.filter((a) => a.kind !== 'sector'),
   };
 }

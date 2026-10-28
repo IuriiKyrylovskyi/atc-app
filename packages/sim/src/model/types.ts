@@ -120,8 +120,12 @@ export type AreaKind =
 export interface Area {
   id: string;
   kind: AreaKind;
+  /** Display name, e.g. "Kennedy" for a sector. */
+  name?: string;
   polygon: LatLon[];
+  /** Lower limit (inclusive), ft. */
   floorFt: number;
+  /** Upper limit (exclusive), ft. */
   ceilingFt: number;
 }
 

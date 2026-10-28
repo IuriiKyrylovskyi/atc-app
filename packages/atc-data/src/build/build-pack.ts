@@ -10,10 +10,12 @@
  */
 import {
   angleDiffDeg,
+  destination,
   distanceM,
   distanceNm,
   type AirspacePack,
   type Airport,
+  type Area,
   type LatLon,
   type PackSource,
   type Runway,
@@ -21,7 +23,7 @@ import {
 import { importCifpArea, readCifpRecords, type CifpRecords } from '../importers/cifp';
 import { importOurAirports, type OurAirportsType } from '../importers/ourairports';
 import { runwayGeometryIssues, validatePack, type ValidationResult } from '../validate';
-import type { PackDefinition } from './definition';
+import type { PackDefinition, SectorDefinition } from './definition';
 
 export interface BuildInputs {
   /** FAACIFP18 text or records already read (to share one parse across packs). */
@@ -202,5 +204,44 @@ export function buildPack(def: PackDefinition, inputs: BuildInputs, options: Bui
     airways: cifp.airways,
     procedures: cifp.procedures,
   };
+  if (def.sectors?.length) {
+    const lookup = (id: string): LatLon | undefined =>
+      pack.airports.find((a) => a.icao === id)?.arp ?? pack.fixes.find((f) => f.id === id)?.pos;
+    pack.areas = def.sectors.map((s) => sectorArea(s, lookup));
+    sources.push({
+      name: def.sectorsSource ?? `${def.id} sector definitions (atc-app, synthetic)`,
+      licence: 'CC0-1.0',
+      url: '',
+      retrieved: inputs.retrieved,
+    });
+  }
   return { pack, validation: validatePack(pack), crossCheck, warnings };
+}
+
+/** Wedge arcs are drawn with a point every this many degrees. */
+const ARC_STEP_DEG = 5;
+
+/** Turns a sector definition into a pack area (polygon of coordinates). */
+export function sectorArea(s: SectorDefinition, lookup: (id: string) => LatLon | undefined): Area {
+  const at = (id: string) => {
+    const p = lookup(id);
+    if (!p) throw new Error(`sector ${s.id}: unknown point ${id}`);
+    return p;
+  };
+  let polygon: LatLon[];
+  if (s.polygon) {
+    polygon = s.polygon.map((p) => (typeof p === 'string' ? at(p) : p));
+  } else {
+    const w = s.wedge!;
+    const centre = at(w.centre);
+    const span = ((w.toDeg - w.fromDeg + 360) % 360) || 360;
+    const steps = Math.max(1, Math.ceil(span / ARC_STEP_DEG));
+    const arc = (nm: number) =>
+      Array.from({ length: steps + 1 }, (_, i) => destination(centre, w.fromDeg + (span * i) / steps, nm * 1852));
+    const outer = arc(w.outerNm);
+    const full = span === 360;
+    if (full) polygon = outer.slice(0, -1);
+    else polygon = w.innerNm > 0 ? [...outer, ...arc(w.innerNm).reverse()] : [centre, ...outer];
+  }
+  return { id: s.id, kind: 'sector', name: s.name, polygon, floorFt: s.floorFt, ceilingFt: s.ceilingFt };
 }

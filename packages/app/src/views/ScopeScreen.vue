@@ -7,6 +7,11 @@
  * (`DAL1192 D080 H240`, see @atc-app/voice command.ts) go to the sim; the comms
  * log shows the instruction, the pilot's readback and any "unable".
  *
+ * The display follows the selected ATC system profile (generic, Selex, Indra),
+ * and the active sector (dropdown) colours traffic by ownership: owned,
+ * incoming (entering within 5 min) or other. Clicking a track symbol shows its
+ * route with estimated times over each point.
+ *
  * `?scenario=<id>` picks a scenario (default: the first one for the pack),
  * `?scenario=none` shows the map only.
  */
@@ -25,13 +30,18 @@ import {
   buildVideoMap,
   DEFAULT_LAYERS,
   DEFAULT_TRAFFIC_OPTIONS,
-  hitTest,
+  findSystem,
+  hitTestDetail,
   magneticHeading,
+  routePath,
+  SCOPE_SYSTEMS,
+  verticalLimits,
   RANGE_PRESETS_NM,
   ScopeRenderer,
   ScopeView,
   TrafficPicture,
   type LeaderDirection,
+  type RoutePath,
   type ScopeLayers,
   type TrafficHit,
   type TrafficOptions,
@@ -75,7 +85,68 @@ const landedCount = ref(0);
 let loadedPack: AirspacePack | null = null;
 let blinkTimer: ReturnType<typeof setInterval> | null = null;
 const conflictCount = ref(0);
+const ownedCount = ref(0);
+const incomingCount = ref(0);
 const scenarioId = ref('none');
+let fixPositions = new Map<string, LatLon>();
+
+// ── ATC system profile + active sector (remembered per viewer) ─────────────
+const SYSTEM_KEY = 'atc.scope.system';
+const sectorKey = () => `atc.scope.sector.${String(route.params.packId)}`;
+const stored = (key: string): string | null => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+const store = (key: string, value: string): void => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Private mode / blocked storage: the choice just is not remembered.
+  }
+};
+const systemId = ref(findSystem(stored(SYSTEM_KEY)).id);
+const system = computed(() => findSystem(systemId.value));
+const activeSector = ref<string>('');
+const sectorOptions = computed(() =>
+  (map.value?.sectors ?? []).map((s) => ({ id: s.id, label: `${s.id} ${s.name ?? ''} ${verticalLimits(s)}` }))
+);
+
+function setSystem(id: string): void {
+  systemId.value = findSystem(id).id;
+  store(SYSTEM_KEY, systemId.value);
+  requestDraw();
+}
+
+function setActiveSector(id: string): void {
+  activeSector.value = id;
+  store(sectorKey(), id);
+  picture?.setSectors(map.value?.sectors ?? [], id || null);
+  countOwnership();
+  requestDraw();
+}
+
+function countOwnership(): void {
+  const list = picture?.list() ?? [];
+  ownedCount.value = list.filter((t) => t.ownership === 'owned').length;
+  incomingCount.value = list.filter((t) => t.ownership === 'incoming').length;
+}
+
+/** Routes with ETOs of the tracks whose route is shown. */
+function shownRoutes(): RoutePath[] {
+  if (!picture || !map.value || !loadedPack) return [];
+  const pack = loadedPack;
+  return picture
+    .list()
+    .filter((t) => t.routeShown)
+    .map((t) => {
+      const a = t.ac.target.approach;
+      const rwy = a ? pack.runways.find((r) => r.airport === a.airport && r.id === a.runway) : undefined;
+      return routePath(t.ac, simTime.value, map.value!.projection, (id) => fixPositions.get(id), rwy ? { id: `RW${rwy.id}`, pos: rwy.threshold } : undefined);
+    });
+}
 const scenarioOptions = ref<{ id: string; name: string }[]>([]);
 
 // ── Command line + comms log ───────────────────────────────────────────────
@@ -109,6 +180,8 @@ const LAYER_LABELS: [keyof ScopeLayers, string][] = [
   ['runways', 'RWY'],
   ['centrelines', 'CL'],
   ['airports', 'APT'],
+  ['sectors', 'SECT'],
+  ['areas', 'AREA'],
 ];
 
 // ── Drawing ────────────────────────────────────────────────────────────────
@@ -118,8 +191,10 @@ function requestDraw(): void {
     frame = 0;
     if (!renderer || !map.value) return;
     const t0 = performance.now();
-    renderer.draw(view, map.value, layers);
-    hits = picture ? renderer.drawTraffic(view, picture.list(), traffic, picture.conflicts).hits : [];
+    renderer.draw(view, map.value, layers, system.value, { activeSector: activeSector.value || null });
+    hits = picture
+      ? renderer.drawTraffic(view, picture.list(), traffic, picture.conflicts, system.value, shownRoutes()).hits
+      : [];
     frameMs.value = performance.now() - t0;
     rangeNm.value = view.rangeNm;
   });
@@ -164,6 +239,7 @@ function onSnapshot(s: Snapshot): void {
   picture.update(s);
   simTime.value = s.t;
   aircraftCount.value = picture.size;
+  countOwnership();
   conflictCount.value = s.conflicts.length;
   if (traffic.selected && !picture.get(traffic.selected)) traffic.selected = null;
   selectedAc.value = traffic.selected ? picture.get(traffic.selected)!.ac : null;
@@ -321,8 +397,10 @@ function onPointerMove(e: PointerEvent): void {
 
 function onPointerUp(e: PointerEvent): void {
   if (e.type === 'pointerup' && pressAt && pointers.size === 1) {
-    const hit = hitTest(hits, local(e));
-    select(hit);
+    const hit = hitTestDetail(hits, local(e));
+    // The track symbol toggles the route with ETOs; the label only selects.
+    if (hit?.kind === 'target') picture?.toggleRoute(hit.callsign);
+    select(hit?.callsign ?? null);
     // Mouse users type the command next; on touch the keyboard would cover the scope.
     if (hit && e.pointerType === 'mouse') commandInput.value?.focus();
   }
@@ -474,6 +552,7 @@ async function startTraffic(pack: AirspacePack, m: VideoMap): Promise<void> {
   }
   const built = buildScenario(script, pack);
   picture = new TrafficPicture(m.projection);
+  picture.setSectors(m.sectors, activeSector.value || null);
   scenarioName.value = script.name;
   session = await SimSession.start(built.config, built.traffic, onSnapshot);
   session.rate = simRate.value;
@@ -487,6 +566,8 @@ function stopTraffic(): void {
   scenarioName.value = null;
   aircraftCount.value = 0;
   conflictCount.value = 0;
+  ownedCount.value = 0;
+  incomingCount.value = 0;
   landedCount.value = 0;
   simTime.value = 0;
   log.value = [];
@@ -530,6 +611,9 @@ onMounted(async () => {
     const m = buildVideoMap(pack);
     map.value = m;
     fixIds = new Set(pack.fixes.map((f) => f.id));
+    fixPositions = new Map(pack.fixes.map((f) => [f.id, f.pos]));
+    const savedSector = stored(sectorKey()) ?? '';
+    activeSector.value = m.sectors.some((s) => s.id === savedSector) ? savedSector : '';
     ilsRunways = new Set(pack.runways.filter((r) => r.ils).map((r) => `${r.airport}|${r.id}`));
     magVar.value = pack.meta.magVar;
     fitCanvas();
@@ -552,7 +636,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="host" class="scope">
+  <div ref="host" class="scope" :style="{ background: system.map.background }">
     <canvas
       ref="canvas"
       class="scope-canvas"
@@ -578,6 +662,19 @@ onBeforeUnmount(() => {
       >
         <option v-for="s in scenarioOptions" :key="s.id" :value="s.id">{{ s.name }}</option>
         <option value="none">No traffic</option>
+      </select>
+      <select class="btn" :value="systemId" title="ATC system" @change="setSystem(($event.target as HTMLSelectElement).value)">
+        <option v-for="s in SCOPE_SYSTEMS" :key="s.id" :value="s.id" :title="s.description">{{ s.name }}</option>
+      </select>
+      <select
+        v-if="sectorOptions.length"
+        class="btn sector"
+        :value="activeSector"
+        title="Active sector"
+        @change="setActiveSector(($event.target as HTMLSelectElement).value)"
+      >
+        <option value="">All sectors</option>
+        <option v-for="s in sectorOptions" :key="s.id" :value="s.id">{{ s.label }}</option>
       </select>
     </div>
 
@@ -658,6 +755,7 @@ onBeforeUnmount(() => {
     <div class="panel bottom-left">
       <span>RNG {{ rangeNm.toFixed(rangeNm < 10 ? 1 : 0) }} NM</span>
       <span v-if="scenarioName">ACFT {{ aircraftCount }}</span>
+      <span v-if="scenarioName && activeSector">{{ activeSector }} OWN {{ ownedCount }} · INC {{ incomingCount }}</span>
       <span v-if="conflictCount" class="alert-count">CA {{ conflictCount }}</span>
       <span v-if="landedCount">LDG {{ landedCount }}</span>
       <span v-if="readout">{{ readout }}</span>
@@ -706,6 +804,13 @@ onBeforeUnmount(() => {
   bottom: env(safe-area-inset-bottom, 0);
   left: 0;
   gap: 16px;
+}
+/* Readable on light system backgrounds (Selex grey) as well as dark ones. */
+.bottom-left > span,
+.title {
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(11, 22, 32, 0.78);
 }
 .row {
   display: flex;
