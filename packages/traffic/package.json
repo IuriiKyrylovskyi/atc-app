@@ -1,0 +1,15 @@
+{
+  "name": "@atc-app/traffic",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Live ADS-B adapters, 7-day flight DB builder, route inference, synthetic traffic generator.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

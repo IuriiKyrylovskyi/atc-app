@@ -46,6 +46,10 @@ Core differences from the current arcade game:
 - **Deterministic and replayable.** Fixed timestep, seeded randomness, every clearance logged ⇒ any session can be replayed and graded.
 - **Data packs, not code, per airport/sector.** Adding an airport means adding data.
 - **Capability tiers, not platform forks.** One web codebase; features switch by detected device capability (§11).
+- **Free first.** The first complete implementation uses only free, commercially usable
+  data, models and libraries. Wherever a paid option would be better, the code says so in a
+  `PAID-ALT:` comment at the point it would plug in (what it is, why it is better, price),
+  so `grep -rn "PAID-ALT" packages` lists every upgrade path.
 - **Licence-clean by construction.** Every dataset carries its source and licence in the pack metadata; the build refuses to publish a pack whose licence does not allow it.
 
 ---
@@ -195,12 +199,14 @@ source of truth for coordinates.
 | **Navigraph** (bring-your-own subscription) | Worldwide navdata via API; charts | €0 for us; user pays Navigraph | Navigraph licenses the **end user**, not the developer. Navdata via their API; charts allowed only inside a "virtual environment" app — we must confirm an ATC sim qualifies (dev@navigraph.com) |
 | Jeppesen / Lufthansa Systems (Lido) | Worldwide, commercial grade | **quote** (enterprise) | Commercial licence |
 | **Customer-supplied** (Academy) | School's own AIP/charts | €0 | School's own licence; data stays in their tenant (§14) |
+| **AIS of Ukraine** (UkSATSE, aisukraine.net) | eAIP (+ AMDT/SUP/AIC/NOTAM list), charts, **ARINC 424 database download** (login-gated) | Annual subscription: eAIP **$1,200/yr** non-resident (UAH 32,400 resident), VFR guide $186, PIB $150 (AIC A 03/25) | "All rights reserved"; subscription is an access licence, not redistribution — consumer use needs a written agreement (pubs@uksatse.aero). Academy: school's own subscription as customer-supplied data. ARINC 424 format fits our CIFP importer. Civil airspace closed since 2022 ⇒ no live traffic there, synthetic/recorded scenarios only |
+| aip.aero (AIP:Aero) | Aggregator: links to official AIP/charts; JSON API with aerodrome data (coords, runways, frequencies, chart links, METAR/NOTAM) | API €0 / €29 / €99 / from €249 per month | Publishes no AIP data itself and states no data licence; no fixes, airways or procedure geometry ⇒ not a navdata source; at most a chart-link index |
 
 **Decision (proposal):**
 
 1. **Launch content = United States** (CIFP + NASR + d-TPP + OurAirports): free, legal, global-quality, fully automatable.
 2. **Worldwide for consumers = Navigraph bring-your-own** (user links their Navigraph account; we render navdata + charts in-session, nothing redistributed). Confirm eligibility first.
-3. **Europe/other in-house packs** only after a per-state licence check; start with states whose eAIP terms allow commercial reuse, budget for EAD B2B if needed.
+3. **Europe/other in-house packs** only after a per-state licence check (Ukraine: UkSATSE agreement needed, §5.2); start with states whose eAIP terms allow commercial reuse, budget for EAD B2B if needed.
 4. **Academy** customers bring their own charts/AIP into their isolated tenant.
 
 ### 5.3 Updates (AIRAC)
@@ -729,6 +735,8 @@ Each phase ends with something playable and testable.
 - Navigraph developer model and terms — https://developers.navigraph.com/docs/general/navigraph-model · https://developers.navigraph.com/docs/charts/airport-charts · https://developers.navigraph.com/docs/developer-terms-of-service
 - Navigraph × Flightradar24 sim traffic — https://www.flightradar24.com/blog/inside-flightradar24/flightradar24-coming-to-a-flight-simulator-near-you/ · https://fselite.net/content/flightradar24-traffic-now-live-in-beyondatc-with-navigraph/
 - Eurocontrol EAD Basic — https://www.ead.eurocontrol.int/fwf-eadbasic/public/static/home.faces
+- AIS of Ukraine publications + 2026 prices (AIC A 03/25) — https://www.aisukraine.net/publications/eng/publ(eng).htm · https://aisukraine.net/current/UK_Circ_2025_A_03_en.pdf
+- AIP:Aero (aggregator, partner API) — https://aip.aero/ua/en/ · https://aip.aero/partners/ · https://aip.aero/terms/
 - FAA SWIM / LADD obligations — https://www.faa.gov/air_traffic/technology/swim/swift/swift-meeting-presentation-18-5-5-2022
 - STT pricing — https://www.cartesia.ai/learn/openai-whisper-api-pricing · https://convertaudiototext.com/blog/speech-to-text-api-pricing-2026 · https://www.digitalapplied.com/blog/openai-gpt-transcribe-stt-model-comparison-2026
 - TTS pricing — https://cloud.google.com/text-to-speech/pricing · https://azure.microsoft.com/pricing/details/cognitive-services/speech-services

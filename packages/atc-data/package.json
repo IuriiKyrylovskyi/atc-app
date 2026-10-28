@@ -1,0 +1,15 @@
+{
+  "name": "@atc-app/atc-data",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Airspace packs: schemas, importers (FAA CIFP/NASR, OurAirports), chart georeferencing, AIRAC pack builder.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

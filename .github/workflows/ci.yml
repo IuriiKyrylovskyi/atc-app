@@ -49,6 +49,9 @@ jobs:
       - name: 🔎 TypeScript Check
         run: pnpm exec tsc -b --noEmit
 
+      - name: 🧪 Unit Tests
+        run: pnpm test
+
       - name: ✅ Environment Verification
         run: pnpm verify:env
 

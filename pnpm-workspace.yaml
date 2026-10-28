@@ -2,5 +2,10 @@ packages:
   - 'packages/app'
   - 'packages/electron'
   - 'packages/mobile'
+  - 'packages/sim'
+  - 'packages/atc-data'
+  - 'packages/voice'
+  - 'packages/traffic'
+  - 'packages/scenario'
   - 'apps/*' # optional, if you later add separate apps
   - 'tools/*' # optional utilities, CLI tools
