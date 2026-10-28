@@ -68,12 +68,14 @@ if (app.isPackaged) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ─── Supabase credentials (placeholders — replace before shipping) ───────────
-// SECURITY: this file is compiled into the desktop app, so anything written
-// here can be extracted from the installed binary. Do NOT paste a real
-// service-role key into source; inject it at runtime instead.
-const SUPABASE_URL = 'https://YOUR_PROJECT_REF.supabase.co';
-const SUPABASE_SERVICE_ROLE_KEY = 'YOUR_SUPABASE_SERVICE_ROLE_KEY';
+// ─── Supabase credentials (read from env, never shipped in JS bundle) ─────────
+// Values come from the environment (see packages/electron/.env.local). Until
+// they are set they stay `mocked_<VAR NAME>`, which the premium check treats as
+// missing. Never hard-code a real service-role key here: this file is compiled
+// into the desktop app and can be extracted from the installed binary.
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL ?? 'mocked_VITE_SUPABASE_URL';
+const SUPABASE_SERVICE_ROLE_KEY = process.env.DB_SERVICE_ROLE_KEY ?? 'mocked_DB_SERVICE_ROLE_KEY';
+const isMocked = (value: string) => value.startsWith('mocked_');
 // Note: SUPABASE_SERVICE_ROLE_KEY is ONLY for the main process.
 // The renderer uses the anon key (VITE_SUPABASE_ANON_KEY) via the normal client.
 // Never expose the service_role key to the renderer.
@@ -160,7 +162,12 @@ session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
 //   Renderer → IPC → Main (fetch Supabase with service_role) → returns { isPremium }
 //
 ipcMain.handle('premium:check', async (_event, userId: string) => {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  if (
+    !SUPABASE_URL ||
+    !SUPABASE_SERVICE_ROLE_KEY ||
+    isMocked(SUPABASE_URL) ||
+    isMocked(SUPABASE_SERVICE_ROLE_KEY)
+  ) {
     console.warn('⚠️ Supabase env vars not set in main process — cannot verify premium');
     return { isPremium: false, error: 'config_missing' };
   }

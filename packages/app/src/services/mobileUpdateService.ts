@@ -3,7 +3,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
-import { ENV } from '@/config/env';
+import { ENV, isMocked } from '@/config/env';
 
 export interface MobileUpdateInfo {
   available: boolean;
@@ -81,7 +81,7 @@ async function checkVersionEndpoint(
   currentVersion: string,
   platform: 'ios' | 'android'
 ): Promise<MobileUpdateInfo> {
-  const versionCheckUrl = ENV.VITE_VERSION_CHECK_URL;
+  const versionCheckUrl = isMocked(ENV.VITE_VERSION_CHECK_URL) ? '' : ENV.VITE_VERSION_CHECK_URL;
 
   if (!versionCheckUrl) {
     return {
@@ -170,7 +170,7 @@ export async function checkMobileUpdate(currentVersion: string): Promise<MobileU
  */
 export async function openAppStore(): Promise<void> {
   const platform = Capacitor.getPlatform();
-  const versionCheckUrl = ENV.VITE_VERSION_CHECK_URL;
+  const versionCheckUrl = isMocked(ENV.VITE_VERSION_CHECK_URL) ? '' : ENV.VITE_VERSION_CHECK_URL;
 
   let storeUrl = '';
 

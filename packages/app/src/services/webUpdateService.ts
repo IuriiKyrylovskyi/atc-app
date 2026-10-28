@@ -1,7 +1,7 @@
 // packages/app/src/services/webUpdateService.ts
 // Web update check service
 
-import { ENV } from '@/config/env';
+import { ENV, isMocked } from '@/config/env';
 
 export interface WebUpdateInfo {
   available: boolean;
@@ -18,7 +18,7 @@ const DEFAULT_INTERVAL_HOURS = 24;
  * Check for updates on web using the version.json endpoint
  */
 export async function checkWebUpdate(currentVersion: string): Promise<WebUpdateInfo> {
-  const versionCheckUrl = ENV.VITE_VERSION_CHECK_URL;
+  const versionCheckUrl = isMocked(ENV.VITE_VERSION_CHECK_URL) ? '' : ENV.VITE_VERSION_CHECK_URL;
 
   if (!versionCheckUrl) {
     return {

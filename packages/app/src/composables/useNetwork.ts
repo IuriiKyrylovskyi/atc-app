@@ -35,7 +35,7 @@ import { ref } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { Network } from '@capacitor/network';
 import { probeReachable } from '@/utils/fetchWithTimeout';
-import { ENV } from '@/config/env';
+import { ENV, isMocked } from '@/config/env';
 
 export type NetworkQuality = 'online' | 'slow' | 'offline';
 
@@ -59,7 +59,7 @@ const SLOW_THRESHOLD_MS = 2000;
  * probe measures the link that matters. Falls back to a well-known
  * stable host when no backend URL is configured.
  */
-const PROBE_URL = ENV.VITE_SUPABASE_URL
+const PROBE_URL = !isMocked(ENV.VITE_SUPABASE_URL)
   ? `${String(ENV.VITE_SUPABASE_URL).replace(/\/$/, '')}/rest/v1/`
   : 'https://www.google.com';
 

@@ -1,8 +1,15 @@
 import { CapacitorConfig } from '@capacitor/cli';
+import * as dotenv from 'dotenv';
+import * as path from 'path';
 
-// AdMob app ids (placeholders — replace with the real atc-app ids).
-const ADMOB_APP_ID_ANDROID = 'YOUR_ADMOB_APP_ID_ANDROID';
-const ADMOB_APP_ID_IOS = 'YOUR_ADMOB_APP_ID_IOS';
+// Capacitor CLI runs in Node (CommonJS) — load packages/app/.env.local
+// so AdMob IDs are available without hardcoding them.
+// VITE_-prefixed vars are intentionally NOT used here (CLI ≠ Vite).
+// Unset values fall back to `mocked_<VAR NAME>`.
+dotenv.config({ path: path.resolve(__dirname, '../app/.env.local') });
+
+const ADMOB_APP_ID_ANDROID = process.env.ADMOB_APP_ID_ANDROID ?? 'mocked_ADMOB_APP_ID_ANDROID';
+const ADMOB_APP_ID_IOS = process.env.ADMOB_APP_ID_IOS ?? 'mocked_ADMOB_APP_ID_IOS';
 
 const config: CapacitorConfig = {
   appId: 'com.atcapp.app',

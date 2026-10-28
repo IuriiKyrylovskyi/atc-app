@@ -5,7 +5,7 @@ import { Capacitor } from '@capacitor/core';
 import { toRaw } from 'vue';
 import { NetworkTimeoutError } from '@/utils/fetchWithTimeout';
 import { useDebugStore } from '@/stores/debug';
-import { ENV } from '@/config/env';
+import { ENV, isMocked } from '@/config/env';
 
 const API_KEYS = {
   ios: ENV.VITE_RC_IOS_KEY as string,
@@ -552,7 +552,8 @@ export class RevenueCatService {
  * The legacy VITE_RC_WEB_BILLING_* names are still read as a fallback.
  */
 function getWebApiKey(): string | undefined {
-  const flag = String(ENV.VITE_RC_WEB_SANDBOX ?? '').toLowerCase();
+  const raw = isMocked(ENV.VITE_RC_WEB_SANDBOX) ? '' : ENV.VITE_RC_WEB_SANDBOX;
+  const flag = String(raw ?? '').toLowerCase();
   const useSandbox = flag === 'true' || (flag === '' && import.meta.env.DEV);
   const env = import.meta.env as Record<string, string | undefined>;
   const key = useSandbox

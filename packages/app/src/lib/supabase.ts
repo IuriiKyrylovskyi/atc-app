@@ -6,14 +6,22 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { safeStorage } from '@/lib/safeStorage';
-import { ENV } from '@/config/env';
+import { ENV, isMocked } from '@/config/env';
 
-export const supabaseUrl = ENV.VITE_SUPABASE_URL as string;
+// supabase-js throws at import time unless the URL is http(s), which would take
+// the whole app down while the .env values are still `mocked_`. Swap in an
+// unroutable URL so the app boots and every Supabase call just fails offline.
+const MOCKED_SUPABASE_URL = 'https://mocked-supabase-url.invalid';
+const configuredUrl = ENV.VITE_SUPABASE_URL;
+if (isMocked(configuredUrl)) {
+  console.warn('⚠️ VITE_SUPABASE_URL is mocked — Supabase calls will fail until it is set.');
+}
+export const supabaseUrl = /^https?:\/\//.test(configuredUrl) ? configuredUrl : MOCKED_SUPABASE_URL;
 export const supabaseAnonKey = ENV.VITE_SUPABASE_ANON_KEY as string;
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(
-    '❌ Missing Supabase config.\n' +
-      'Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in packages/app/src/config/env.ts\n' +
+    '❌ Missing Supabase env vars.\n' +
+      'Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in packages/app/.env.local\n' +
       'See SUPABASE_SETUP.md for instructions.'
   );
 }
