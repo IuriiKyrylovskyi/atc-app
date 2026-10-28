@@ -77,6 +77,9 @@ importers:
       '@atc-app/sim':
         specifier: workspace:*
         version: link:../sim
+      '@atc-app/voice':
+        specifier: workspace:*
+        version: link:../voice
       '@capacitor-community/admob':
         specifier: 7.2.0
         version: 7.2.0
@@ -309,7 +312,18 @@ importers:
 
   packages/traffic: {}
 
-  packages/voice: {}
+  packages/voice:
+    dependencies:
+      '@atc-app/sim':
+        specifier: workspace:*
+        version: link:../sim
+    devDependencies:
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.6
+        version: 3.2.7(@types/debug@4.1.12)(@types/node@24.7.0)(less@4.9.0)(sass@1.94.0)(terser@5.46.1)
 
 packages:
 

@@ -80,7 +80,9 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [ ] Range/bearing tool, day/night palette
 - [ ] OpenAP export to JSON for ~15 types + type-to-reference mapping
 - [ ] Flight model v1: climb/descent by type, accel/decel, 250 kt < FL100, wind triangle
-- [ ] Text command syntax (`DAL123 FL120 H240 S220`) → `Clearance` + validation
+- [x] Text command syntax (`DAL123 FL120 H240 S220`) → `Message` + validation (`packages/voice` command.ts): FL/A/C/D, H/L/R, TL/TR, S/M, DCT, SQ, RON; callsign by unique ending or selection; climb/descend sanity check
+- [x] Scope command line: live phraseology preview, ↑/↓ history, comms log (instruction, readback, pilot "unable" from sim rejections); click a target to command it
+- [ ] Command line: Tab-complete callsigns / fixes, approach clearances (ILS, visual), "expedite", vertical rate
 - [ ] Separation monitor (3/5 NM, 1000 ft) + STCA colouring, MSAW, area infringement
 - [x] Route `/scope/:packId` behind a feature flag (dev builds or `VITE_FEATURE_SCOPE=true`), no account needed
 - [ ] Open the scope from Control Center
@@ -90,10 +92,12 @@ the defaults below; the open items are only about paid upgrades or permissions.
 
 - [ ] Chevrotain grammar: altitude, heading, turn, speed, direct, squawk, contact, approach/landing clearance
 - [ ] Number normaliser (FL, thousands, "niner", decimals, NATO alphabet)
-- [ ] ICAO telephony designators table + abbreviated callsigns
+- [x] Telephony designators: starter table (23 operators) + NATO / digit spelling for registrations
+- [ ] Full ICAO telephony table (import) + abbreviated callsigns
 - [ ] Multi-clearance transmissions → `Message`; out-of-grammar ⇒ "say again"
 - [ ] Phrase corpus ≥ 500 tests (text → expected `Message`)
-- [ ] Readback generator (readback rules, callsign last)
+- [x] Readback generator v0: FAA phraseology, callsign last, text + spoken (TTS) forms, "unable"
+- [ ] Readback rules per region (ICAO Doc 4444 wording), wrong-readback injection
 - [ ] `TextToSpeech` interface: Kokoro (kokoro-js) + Web Speech fallback
 - [ ] Per-aircraft voice/accent + VHF radio effect
 - [ ] Pilot model: reaction delay, "unable", requests
