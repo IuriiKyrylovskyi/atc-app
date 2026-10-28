@@ -130,3 +130,6 @@ raw_assets/
 packages/app/src/assets/backgrounds/
 packages/app/src/assets/plane-sprites/
 screenshots/
+
+# Claude Code task worktrees (one per task branch)
+.claude/worktrees/

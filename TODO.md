@@ -4,6 +4,10 @@ Main tasks for building the simulator described in
 [ATC_ARCHITECTURE.md](ATC_ARCHITECTURE.md). Section numbers (§) point there.
 `docs/TODO.md` is the old skymess arcade backlog.
 
+Workflow: every task gets its own branch `task/<name>` cut from `dev` and its own
+worktree in `.claude/worktrees/<name>`. When the task is done and tests pass, it is
+merged back into `dev` and the worktree is removed.
+
 Legend: `[ ]` todo · `[x]` done · **⛔ Dn** blocked until decision n in §18 is made
 
 ---
