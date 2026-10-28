@@ -49,7 +49,7 @@ jobs:
       build_android: ${{ steps.flags.outputs.build_android }}
       build_ios: ${{ steps.flags.outputs.build_ios }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -80,8 +80,8 @@ jobs:
             echo "build_ios=true" >> $GITHUB_OUTPUT
           fi
 
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: 'pnpm'
@@ -114,11 +114,11 @@ jobs:
           rm -rf ${{ github.workspace }}/*
           rm -rf ${{ github.workspace }}/.??*
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: 'pnpm'
@@ -135,7 +135,7 @@ jobs:
           pnpm --filter @atc-app/app build
 
       - name: 📤 Upload Web Build Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: web-build
           path: packages/app/dist
@@ -154,11 +154,11 @@ jobs:
       needs.validate.outputs.build_electron == 'true' &&
       (needs.build-web.result == 'success' || needs.build-web.result == 'skipped')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: 'pnpm'
@@ -171,7 +171,7 @@ jobs:
 
       - name: 📥 Download Web Build
         if: needs.validate.outputs.build_web == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-build
           path: packages/app/dist
@@ -189,7 +189,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📤 Upload Electron Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electron-macos
           path: |
@@ -210,17 +210,17 @@ jobs:
       needs.validate.outputs.build_android == 'true' &&
       (needs.build-web.result == 'success' || needs.build-web.result == 'skipped')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: 'pnpm'
 
       - name: ☕ Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -241,7 +241,7 @@ jobs:
 
       - name: 📥 Download Web Build
         if: needs.validate.outputs.build_web == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-build
           path: packages/app/dist
@@ -293,7 +293,7 @@ jobs:
         run: rm -f packages/mobile/android/app/atc-app-release.keystore
 
       - name: 📤 Upload Android APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-apk
           path: |
@@ -314,11 +314,11 @@ jobs:
       needs.validate.outputs.build_ios == 'true' &&
       (needs.build-web.result == 'success' || needs.build-web.result == 'skipped')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: 'pnpm'
@@ -331,7 +331,7 @@ jobs:
 
       - name: 📥 Download Web Build
         if: needs.validate.outputs.build_web == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-build
           path: packages/app/dist
@@ -376,7 +376,7 @@ jobs:
           ls -lh App.ipa
 
       - name: 📤 Upload iOS IPA
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ios-ipa
           path: packages/mobile/ios/App/build/Build/Products/Release-iphoneos/App.ipa
@@ -391,10 +391,10 @@ jobs:
     needs: [validate, build-electron, build-android, build-ios]
     if: always() && needs.validate.result == 'success'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 📥 Download All Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-artifacts
 
@@ -466,7 +466,7 @@ jobs:
           cat release-notes.md
 
       - name: 🏷️ Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.validate.outputs.version }}
           name: ATC-APP v${{ needs.validate.outputs.version }}
