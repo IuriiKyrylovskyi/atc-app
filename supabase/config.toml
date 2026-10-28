@@ -1,0 +1,8 @@
+[functions.revenuecat-webhook]
+verify_jwt = false
+
+# delete-account verifies the caller itself (auth.getUser on the bearer token)
+# and is live without the gateway check (verify_jwt=false, seen 2026-10-25).
+# Recorded here so the next deploy does not silently change it.
+[functions.delete-account]
+verify_jwt = false

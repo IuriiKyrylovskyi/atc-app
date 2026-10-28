@@ -1,0 +1,34 @@
+{
+  "name": "@atc-app/electron",
+  "version": "0.0.0",
+  "description": "ATC-APP Desktop Application",
+  "author": {
+    "name": "KY",
+    "email": "support@atc-app.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/IuriiKyrylovskyi/atc-app.git"
+  },
+  "private": true,
+  "main": "dist/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
+    "start": "electron .",
+    "build": "node build.cjs",
+    "watch": "node build.cjs --watch",
+    "dist": "pnpm --filter @atc-app/app build && pnpm --filter @atc-app/electron build && pnpm --filter @atc-app/electron exec electron-builder --publish never --config electron-builder.yml"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^26.0.0",
+    "electron-builder": "^24.13.3",
+    "esbuild": "^0.21.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "bytenode": "^1.5.7",
+    "electron-updater": "^6.1.7"
+  }
+}

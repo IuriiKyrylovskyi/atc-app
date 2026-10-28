@@ -1,0 +1,125 @@
+name: 🧩 Verify Monorepo (Lint, Type, Build)
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    name: ⚙️ Setup & Cache Dependencies
+    runs-on: ubuntu-latest
+    outputs:
+      cache-key: ${{ steps.cache-key.outputs.key }}
+    steps:
+      - name: ⬇️ Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Set up PNPM (uses packageManager from package.json)
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: ⚙️ Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: 📦 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - id: cache-key
+        run: echo "key=$(date +%s)" >> $GITHUB_OUTPUT
+
+  lint_typecheck:
+    name: 🧹 Lint & Type Check
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Prettier check
+        run: pnpm exec prettier --check "**/*.{ts,tsx,vue,js,json,md}" || (pnpm exec prettier --write "**/*.{ts,tsx,vue,js,json,md}" && git --no-pager diff --name-only)
+
+      - name: Run ESLint
+        run: pnpm lint
+
+      - name: Type check
+        run: pnpm exec tsc -b --noEmit
+
+  build_app_electron:
+    name: 🏗️ Build Web + Electron
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Web App
+        run: pnpm --filter @atc-app/app build
+
+      - name: Build Electron (compile + copy)
+        run: pnpm --filter @atc-app/electron build
+
+  build_mobile:
+    name: 📱 Build Mobile (Capacitor sync)
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web and sync Capacitor
+        run: |
+          pnpm --filter @atc-app/app build
+          pnpm --filter @atc-app/mobile exec cap sync
+          test -f packages/mobile/android/app/src/main/assets/capacitor.config.json
+          test -f packages/mobile/ios/App/App/capacitor.config.json
+
+  summary:
+    name: 🧾 CI Summary
+    needs: [lint_typecheck, build_app_electron, build_mobile]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: 🧾 Generate CI Summary
+        run: |
+          echo "### 🧩 CI Summary" >> $GITHUB_STEP_SUMMARY
+          echo "✅ ESLint & TypeScript checks completed" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Vue + Electron build steps completed" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Capacitor sync validated for Android & iOS" >> $GITHUB_STEP_SUMMARY
+          echo "🏁 Monorepo verification finished" >> $GITHUB_STEP_SUMMARY

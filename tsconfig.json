@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.base.json",
+  "files": [],
+  "references": [
+    { "path": "packages/app" },
+    { "path": "packages/electron" },
+    { "path": "packages/mobile" }
+  ]
+}

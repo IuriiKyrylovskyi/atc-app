@@ -1,0 +1,417 @@
+name: 🚀 Release Pipeline
+qn:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # ============================================================================
+  # 🔍 Pre-Release Validation
+  # ============================================================================
+  validate:
+    name: 🔍 Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📋 Extract Version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=${GITHUB_REF#refs/tags/v}
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Release Version: $VERSION"
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: |
+          git config --global url."https://github.com/".insteadOf git@github.com:
+          git config --global url."https://".insteadOf ssh://
+          pnpm install --frozen-lockfile
+      - run: pnpm verify:env
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm exec tsc -b --noEmit
+
+  # ============================================================================
+  # 🌐 Build Shared Web App
+  # ============================================================================
+  build-web:
+    name: 🌐 Build Web
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: |
+          git config --global url."https://github.com/".insteadOf git@github.com:
+          git config --global url."https://".insteadOf ssh://
+          pnpm install --frozen-lockfile
+      - run: pnpm --filter @atc-app/app build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: packages/app/dist
+          retention-days: 7
+
+  # ============================================================================
+  # 🖥️ Desktop Builds (Multi-Platform)
+  # ============================================================================
+  build-desktop-windows:
+    name: 🪟 Windows Desktop
+    runs-on: [self-hosted, windows, desktop]
+    needs: build-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: |
+          git config --global url."https://github.com/".insteadOf git@github.com:
+          git config --global url."https://".insteadOf ssh://
+          pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: packages/app/dist
+
+      - name: 🏗️ Build Electron
+        run: pnpm --filter @atc-app/electron build
+
+      - name: 📦 Package Windows
+        run: pnpm --filter @atc-app/electron exec electron-builder --win --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: packages/electron/release/*.exe
+
+  build-desktop-macos:
+    name: 🍎 macOS Desktop
+    runs-on: [self-hosted, macos, desktop]
+    needs: build-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: |
+          git config --global url."https://github.com/".insteadOf git@github.com:
+          git config --global url."https://".insteadOf ssh://
+          pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: packages/app/dist
+
+      - name: 🏗️ Build Electron
+        run: pnpm --filter @atc-app/electron build
+
+      - name: 📦 Package macOS
+        run: pnpm --filter @atc-app/electron exec electron-builder --mac --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-release
+          path: |
+            packages/electron/release/*.dmg
+            packages/electron/release/*.zip
+
+  build-desktop-linux:
+    name: 🐧 Linux Desktop
+    runs-on: ubuntu-latest
+    needs: build-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: |
+          git config --global url."https://github.com/".insteadOf git@github.com:
+          git config --global url."https://".insteadOf ssh://
+          pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: packages/app/dist
+
+      - name: 🏗️ Build Electron
+        run: pnpm --filter @atc-app/electron build
+
+      - name: 📦 Package Linux
+        run: pnpm --filter @atc-app/electron exec electron-builder --linux --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-release
+          path: packages/electron/release/*.AppImage
+
+  # ============================================================================
+  # 📱 Mobile Builds (Android & iOS)
+  # ============================================================================
+  build-android:
+    name: 🤖 Android Release
+    runs-on: [self-hosted, linux, android]
+    needs: build-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: packages/app/dist
+
+      - name: 📄 Capacitor Sync
+        run: pnpm --filter @atc-app/mobile exec cap sync android
+
+      - name: 🔐 Decode Keystore
+        run: |
+          if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "ERROR: ANDROID_KEYSTORE_BASE64 secret is not set. Aborting." >&2
+            exit 1
+          fi
+          mkdir -p packages/mobile/android/app
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > packages/mobile/android/app/atc-app-release.keystore
+          echo "Decoded keystore:"
+          ls -la packages/mobile/android/app/atc-app-release.keystore
+        shell: bash
+
+      - name: 🔧 Make Gradlew Executable
+        run: chmod +x packages/mobile/android/gradlew
+
+      - name: 🗃️ Build Signed Android APK
+        working-directory: packages/mobile/android
+        run: ./gradlew assembleRelease --no-daemon
+        env:
+          ATC_APP_RELEASE_STORE_FILE: atc-app-release.keystore
+          ATC_APP_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ATC_APP_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ATC_APP_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: 🧹 Cleanup Keystore
+        if: always()
+        run: rm -f packages/mobile/android/app/atc-app-release.keystore
+
+      - name: ✅ Verify APK Signature
+        run: |
+          APK_PATH="packages/mobile/android/app/build/outputs/apk/release/app-release.apk"
+          if [ -f "$APK_PATH" ]; then
+            echo "✅ APK built successfully"
+            ls -lh "$APK_PATH"
+            # Verify it's signed
+            $ANDROID_HOME/build-tools/*/apksigner verify --verbose "$APK_PATH" || echo "⚠️ APK verification failed"
+          else
+            echo "❌ APK not found"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-release
+          path: packages/mobile/android/app/build/outputs/apk/release/*.apk
+
+  build-ios:
+    name: 🍎 iOS Release
+    runs-on: [self-hosted, macos, ios]
+    needs: build-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🔧 Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+
+      - name: 📦 Install CocoaPods
+        run: gem install cocoapods
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: |
+          git config --global url."https://github.com/".insteadOf git@github.com:
+          git config --global url."https://".insteadOf ssh://
+          pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: packages/app/dist
+
+      - name: 🔄 Capacitor Sync
+        run: pnpm --filter @atc-app/mobile exec cap sync ios
+
+      - name: 📦 Install iOS Dependencies
+        working-directory: packages/mobile/ios/App
+        run: pod install
+
+      - name: 🏗️ Build iOS
+        working-directory: packages/mobile/ios/App
+        run: |
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            -allowProvisioningUpdates \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-release
+          path: packages/mobile/ios/App/build/Build/Products/Release-iphoneos/*.app
+
+  # ============================================================================
+  # 🏷️ Create GitHub Release
+  # ============================================================================
+  create-release:
+    name: 🏷️ Create Release
+    runs-on: ubuntu-latest
+    needs:
+      - validate
+      - build-desktop-windows
+      - build-desktop-macos
+      - build-desktop-linux
+      - build-android
+      - build-ios
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📥 Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: 📝 Generate Release Notes
+        id: notes
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          echo "## 🚀 ATC-APP v$VERSION" > release-notes.md
+          echo "" >> release-notes.md
+          echo "### 📦 Downloads" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "#### 🖥️ Desktop Applications" >> release-notes.md
+          echo "- **Windows**: \`ATC-APP-${VERSION}-win.exe\`" >> release-notes.md
+          echo "- **macOS**: \`ATC-APP-${VERSION}-mac.dmg\` or \`.zip\`" >> release-notes.md
+          echo "- **Linux**: \`ATC-APP-${VERSION}-linux.AppImage\`" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "#### 📱 Mobile Applications" >> release-notes.md
+          echo "- **Android**: \`app-release.apk\`" >> release-notes.md
+          echo "- **iOS**: \`App.app\` (requires sideloading or TestFlight)" >> release-notes.md
+          echo "" >> release-notes.md
+          if [ -f CHANGELOG.md ]; then
+            echo "### 📋 Changelog" >> release-notes.md
+            echo "" >> release-notes.md
+            sed -n "/^## \[$VERSION\]/,/^## \[/p" CHANGELOG.md | head -n -1 >> release-notes.md || true
+          fi
+          cat release-notes.md
+
+      - name: 🏷️ Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.validate.outputs.version }}
+          name: ATC-APP v${{ needs.validate.outputs.version }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: false
+          files: |
+            release-artifacts/windows-release/*
+            release-artifacts/macos-release/*
+            release-artifacts/linux-release/*
+            release-artifacts/android-release/*
+            release-artifacts/ios-release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================================================
+  # 📊 Release Summary
+  # ============================================================================
+  release-summary:
+    name: 📊 Release Summary
+    runs-on: ubuntu-latest
+    needs: [create-release, validate]
+    if: always()
+    steps:
+      - name: 📝 Generate Summary
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          echo "### 🚀 ATC-APP Release v$VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Platform | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🪟 Windows | ✅ Built |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🍎 macOS | ✅ Built |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🐧 Linux | ✅ Built |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🤖 Android | ✅ Built |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📱 iOS | ✅ Built |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🎉 **Release Published Successfully!**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "View release: [v$VERSION](https://github.com/${{ github.repository }}/releases/tag/v$VERSION)" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,97 @@
+appId: com.atcapp.desktop
+productName: ATC-APP
+
+directories:
+  output: release
+  buildResources: app-build
+
+files:
+  - dist/**
+  - app-dist/**
+  - package.json
+
+asar: true
+asarUnpack:
+  - '**/*.node'
+
+extraResources:
+  - from: app-build/
+    to: app-build/
+
+# -----------------------------------------------------------------------------
+# 🪟 Windows Configuration
+# -----------------------------------------------------------------------------
+win:
+  target:
+    - nsis
+  icon: app-build/icon.ico
+  artifactName: '${productName}-${version}-win.${ext}'
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false
+  shortcutName: ATC-APP
+
+# -----------------------------------------------------------------------------
+# 🍏 macOS Configuration (with notarization-ready placeholders)
+# -----------------------------------------------------------------------------
+mac:
+  category: public.app-category.utilities
+  target:
+    - dmg
+    - zip
+  icon: app-build/icon.icns
+  artifactName: '${productName}-${version}-mac.${ext}'
+  entitlements: app-build/entitlements.mac.plist
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  extendInfo:
+    NSCameraUsageDescription: 'ATC-APP requires camera access.'
+    NSMicrophoneUsageDescription: 'ATC-APP requires microphone access.'
+    NSDocumentsFolderUsageDescription: 'ATC-APP requires access to your Documents folder.'
+    NSDownloadsFolderUsageDescription: 'ATC-APP requires access to your Downloads folder.'
+
+  # ----------------------------------------------------------
+  # 🧾 macOS Signing & Notarization (disabled by default)
+  # ----------------------------------------------------------
+  # identity: "Developer ID Application: Your Name (TEAMID)"
+  # notarize:
+  #   appleId: "your-apple-id@example.com"
+  #   appleIdPassword: "@keychain:AC_PASSWORD"
+  #   teamId: "YOURTEAMID"
+  #   ascProvider: "YOUR_PROVIDER_SHORTNAME"
+  # Notes:
+  # - `identity` is your Developer ID Application certificate name
+  # - `appleIdPassword` should use a keychain item created via:
+  #     xcrun altool --store-password-in-keychain-item AC_PASSWORD
+  # - Uncomment only when ready for notarization on macOS
+
+# -----------------------------------------------------------------------------
+# 🐧 Linux (optional)
+# -----------------------------------------------------------------------------
+linux:
+  target:
+    - AppImage
+  icon: app-build
+  artifactName: '${productName}-${version}-linux.${ext}'
+  category: Utility
+
+# -----------------------------------------------------------------------------
+# 📦 Publishing Configuration
+# -----------------------------------------------------------------------------
+publish:
+  - provider: github
+    owner: IuriiKyrylovskyi
+    repo: atc-app
+    releaseType: release
+    channel: latest
+    publishAutoUpdate: true
+
+# -----------------------------------------------------------------------------
+# 🧱 Default Artifact Name
+# -----------------------------------------------------------------------------
+artifactName: '${productName}-${version}-${os}.${ext}'

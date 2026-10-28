@@ -1,0 +1,86 @@
+{
+  "name": "atc-app-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "engineStrict": true,
+  "scripts": {
+    "bootstrap": "pnpm install",
+    "dev": "concurrently \"pnpm --filter @atc-app/app dev\" \"pnpm --filter @atc-app/electron dev\"",
+    "dev:app": "pnpm --filter @atc-app/app dev",
+    "dev:electron": "node scripts/check-skymess-updates.mjs && pnpm --filter @atc-app/electron dev",
+    "dev:android": "node scripts/check-skymess-updates.mjs && echo 🔧 Building web app... && pnpm --filter @atc-app/app build && echo 🔄 Syncing with Capacitor... && pnpm --filter @atc-app/mobile exec cap sync android && echo 🏗️ Building Android APK... && cd packages/mobile/android && gradlew.bat assembleDebug && echo 📲 Installing APK... && adb install -r app\\build\\outputs\\apk\\debug\\app-debug.apk && echo 🚀 Launching app... && adb shell am start -n com.atcapp.app/com.atcapp.app.MainActivity",
+    "dev:ios": "node scripts/check-skymess-updates.mjs && pnpm --filter @atc-app/app build && pnpm --filter @atc-app/mobile exec cap sync ios && cd packages/mobile/ios/App && xcodebuild -scheme App -configuration Debug -sdk iphonesimulator 'platform=iOS Simulator,name=iPhone 15' -derivedDataPath build && xcrun simctl install booted build/Build/Products/Debug-iphonesimulator/App.app && xcrun simctl launch booted com.atcapp.app",
+    "dev:mobile": "node -e \"const os=require('os'); const isMac=os.platform()==='darwin'; console.log(isMac ? '🍏 Running iOS build...' : '🤖 Running Android build...'); const {execSync}=require('child_process'); execSync(isMac ? 'pnpm run dev:ios' : 'pnpm run dev:android', {stdio:'inherit'});\"",
+    "build": "pnpm --filter @atc-app/app build && pnpm --filter @atc-app/electron build",
+    "build:app": "pnpm --filter @atc-app/app build",
+    "build:electron": "pnpm --filter @atc-app/electron build",
+    "mobile:clean": "node -e \"const fs=require('fs'); const path=require('path'); const del=p=>{if(fs.existsSync(p)){console.log('🧹 Removing',p);fs.rmSync(p,{recursive:true,force:true});}};['packages/app/dist','packages/mobile/android/app/src/main/assets/public','packages/mobile/android/build','packages/mobile/android/app/build','packages/mobile/ios/App/App/public'].forEach(d=>del(path.resolve(d)));console.log('✅ Clean complete.');\"",
+    "build:mobile:android": "cross-env CAPACITOR_PLATFORM=android pnpm --filter @atc-app/app exec vite build",
+    "build:mobile:ios": "cross-env CAPACITOR_PLATFORM=ios pnpm --filter @atc-app/app exec vite build",
+    "build:mobile": "pnpm run build:mobile:android",
+    "cap:sync:android": "pnpm --filter @atc-app/mobile exec cap sync android",
+    "cap:sync:ios": "pnpm --filter @atc-app/mobile exec cap sync ios",
+    "android:dev": "pnpm run build:mobile:android && pnpm run cap:sync:android && echo '✅ Android sync complete'",
+    "android:release": "pnpm run mobile:clean && pnpm run build:mobile:android && pnpm run cap:sync:android && cd packages/mobile/android && (./gradlew assembleRelease || gradlew.bat assembleRelease) && echo '✅ Android release APK complete'",
+    "ios:release": "pnpm run build:mobile:ios && pnpm --filter @atc-app/mobile exec cap sync ios && cd packages/mobile/ios/App && xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos -archivePath ~/Library/Developer/Xcode/Archives/ATC-APP/App.xcarchive archive && echo ✅ Archive complete",
+    "android:bundle": "pnpm run mobile:clean && pnpm run build:mobile:android && pnpm run cap:sync:android && cd packages/mobile/android && (./gradlew bundleRelease || gradlew.bat bundleRelease) && echo '✅ Android release AAB complete'",
+    "mobile:build:release": "node -e \"const os=require('os'); const isMac=os.platform()==='darwin'; console.log(isMac ? '🍏 Building iOS...' : '🤖 Building Android...'); const {execSync}=require('child_process'); execSync(isMac ? 'pnpm run ios:release' : 'pnpm run android:release', {stdio:'inherit'});\"",
+    "dist": "pnpm --filter @atc-app/electron run dist",
+    "dist:electron": "pnpm --filter @atc-app/electron run dist",
+    "lint": "eslint --ext .ts,.vue packages",
+    "format": "prettier --write \"**/*.{ts,tsx,vue,js,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,vue,js,json,md}\"",
+    "typecheck": "pnpm --filter @atc-app/app typecheck && tsc --noEmit -p packages/electron/tsconfig.json && tsc --noEmit -p packages/mobile/tsconfig.json",
+    "verify:env": "node scripts/verify-env.js",
+    "setup:dev": "echo 🧩 Starting ATC-APP Dev Setup... && pnpm verify:env && pnpm install && pnpm mobile:clean && pnpm --filter @atc-app/app build && pnpm --filter @atc-app/mobile exec cap sync && echo ✅ ATC-APP project is ready for development!",
+    "version:sync": "node scripts/bump-native.js",
+    "release": "pnpm run verify:env && pnpm run build && pnpm run dist:electron && pnpm exec standard-version",
+    "release:minor": "pnpm run verify:env && pnpm run build && pnpm run dist:electron && pnpm exec standard-version --release-as minor",
+    "release:major": "pnpm run verify:env && pnpm run build && pnpm run dist:electron && pnpm exec standard-version --release-as major",
+    "release:all": "pnpm run release && pnpm run android:bundle && pnpm run ios:release",
+    "release:all:minor": "pnpm run release:minor && pnpm run android:bundle && pnpm run ios:release",
+    "release:all:major": "pnpm run release:major && pnpm run android:bundle && pnpm run ios:release",
+    "check:skymess": "node scripts/check-skymess-updates.mjs"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@typescript-eslint/eslint-plugin": "^8.10.0",
+    "@typescript-eslint/parser": "^8.10.0",
+    "concurrently": "^8.0.0",
+    "cross-env": "^7.0.3",
+    "eslint": "^8.40.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "eslint-plugin-vue": "^9.23.0",
+    "prettier": "^2.8.8",
+    "prettier-plugin-tailwindcss": "^0.6.14",
+    "rimraf": "^6.0.1",
+    "sharp": "^0.34.5",
+    "@supabase/supabase-js": "^2.45.4",
+    "standard-version": "^9.5.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.0.0"
+  },
+  "standard-version": {
+    "tagPrefix": "v",
+    "bumpFiles": [
+      "package.json",
+      "packages/app/package.json",
+      "packages/electron/package.json",
+      "packages/mobile/package.json"
+    ],
+    "scripts": {
+      "postbump": "node scripts/bump-native.js && node scripts/update-version-json.js",
+      "precommit": "git add packages/mobile/android/app/build.gradle packages/mobile/ios/App/App.xcodeproj/project.pbxproj packages/app/public/version.json"
+    }
+  },
+  "packageManager": "pnpm@9.10.0"
+}

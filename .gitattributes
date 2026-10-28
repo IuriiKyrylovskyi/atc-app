@@ -1,0 +1,63 @@
+# ----------------------------------------------------------
+# Core EOL normalization
+# ----------------------------------------------------------
+# Always normalize text files to LF in repo,
+# convert to CRLF on Windows when checked out.
+* text=auto eol=lf
+
+# ----------------------------------------------------------
+# File type-specific settings
+# ----------------------------------------------------------
+
+# JavaScript, TypeScript, and Vue files
+*.js  text eol=lf diff=javascript
+*.ts  text eol=lf diff=typescript
+*.vue text eol=lf diff=javascript
+
+# JSON, YAML, Markdown, HTML, CSS
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.md   text eol=lf
+*.html text eol=lf
+*.css  text eol=lf
+*.scss text eol=lf
+
+# Shell and configuration files
+*.sh   text eol=lf
+*.bash text eol=lf
+*.env  text eol=lf
+*.ini  text eol=lf
+
+# GitHub Actions workflows
+.github/**/*.yml text eol=lf
+
+# Windows batch files keep CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files (never auto-convert)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.jar binary
+*.keystore binary
+*.jks binary
+*.p12 binary
+*.aab binary
+*.apk binary
+
+# ----------------------------------------------------------
+# Custom diff drivers for clarity
+# ----------------------------------------------------------
+# Make Vue single-file components diff like JavaScript
+diff=javascript
+
+# Keep prettier-friendly diffs for JSON and YAML
+*.json diff=plain
+*.yml  diff=plain
+*.yaml diff=plain

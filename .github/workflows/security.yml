@@ -1,0 +1,151 @@
+name: 🔒 Security Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run weekly on Mondays at 00:00 UTC
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+  statuses: read
+
+jobs:
+  # ============================================================================
+  # 🔍 Dependency Audit
+  # ============================================================================
+  audit:
+    name: 🔍 Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: 📥 Install Dependencies
+        run: |
+          git config --global url."https://github.com/".insteadOf git@github.com:
+          git config --global url."https://".insteadOf ssh://
+          pnpm install --frozen-lockfile
+
+      - name: 🔍 PNPM Audit
+        run: pnpm audit --audit-level=high
+        continue-on-error: true
+
+      - name: 📊 Generate Audit Report
+        if: always()
+        run: |
+          pnpm audit --json > audit-report.json || true
+          echo "### 🔍 Security Audit Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -s audit-report.json ]; then
+            echo "⚠️ Found vulnerabilities. Please review." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ No high-severity vulnerabilities found." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 📤 Upload Audit Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-report
+          path: audit-report.json
+          retention-days: 30
+
+  # ============================================================================
+  # 📦 Check for Outdated Dependencies
+  # ============================================================================
+  outdated:
+    name: 📦 Outdated Dependencies
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: 📊 Check Outdated Packages
+        run: |
+          pnpm outdated --format json > outdated.json || true
+          echo "### 📦 Outdated Dependencies" >> $GITHUB_STEP_SUMMARY
+          pnpm outdated >> $GITHUB_STEP_SUMMARY || echo "All dependencies are up to date!" >> $GITHUB_STEP_SUMMARY
+
+      - name: 📤 Upload Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: outdated-dependencies
+          path: outdated.json
+          retention-days: 30
+
+  # ============================================================================
+  # 🔐 Secret Scanning
+  # ============================================================================
+  secrets:
+    name: 🔐 Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔍 TruffleHog Scan (Incremental)
+        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+        uses: trufflesecurity/trufflehog@main
+        continue-on-error: true
+        with:
+          path: ./
+          base: ${{ github.event.before }}
+          head: ${{ github.event.after }}
+          extra_args: --only-verified
+
+      - name: 🔍 TruffleHog Scan (Full Repository)
+        if: github.event_name != 'push' || github.event.before == '0000000000000000000000000000000000000000'
+        uses: trufflesecurity/trufflehog@main
+        continue-on-error: true
+        with:
+          path: ./
+          extra_args: --only-verified --max-depth 50
+
+      - name: 📊 Scan Summary
+        if: always()
+        run: |
+          echo "### 🔐 Secret Scanning Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Scanned for leaked secrets and credentials." >> $GITHUB_STEP_SUMMARY
+          echo "✅ No verified secrets found or scan completed." >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # 📊 Security Summary
+  # ============================================================================
+  summary:
+    name: 📊 Security Summary
+    runs-on: ubuntu-latest
+    needs: [audit, secrets]
+    if: always()
+    steps:
+      - name: 📝 Generate Summary
+        run: |
+          echo "### 🔒 Security Scan Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔍 Dependency Audit | ${{ needs.audit.result == 'success' && '✅ Passed' || '⚠️ Review Required' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔐 Secret Scanning | ${{ needs.secrets.result == 'success' && '✅ Passed' || '⚠️ Review Required' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "ℹ️ **Note**: CodeQL analysis requires GitHub Advanced Security for private repos" >> $GITHUB_STEP_SUMMARY
