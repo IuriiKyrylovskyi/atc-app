@@ -364,6 +364,22 @@ access terms to confirm).
   monospace text, which Canvas 2D draws crisply at any pixel ratio with no texture handling.
   The full NY TMA (~1 300 fixes, ~100 airways) draws in 1–2 ms. The renderer reads snapshots only.
   Phaser stays for the legacy arcade game until it is retired.
+- **ATC system profiles** (`packages/scope/src/systems.ts`): the controller picks the display
+  system they train on — *Generic* (our default, STARS-like data block), *Selex (Alenia)*
+  (modelled on a Selex ES / Leonardo en-route display in service in Ukraine: grey map, white
+  "+" tracks, `CALLSIGN / AFL CFL / G<gs>` labels, cyan incoming, boxed extended label of the
+  selected track) and *Indra* (approximation of SACTA / iTEC, to be calibrated from a reference
+  photo). A profile is data only: map palette, sector / area styling, track symbol, ownership
+  colours and label layouts — adding a system (Thales TopSky, Frequentis…) is one object.
+- **Sectors and ownership:** packs carry control sectors (lateral polygon + floor / ceiling);
+  the controller selects the active sector, which is filled and outlined, and traffic is
+  coloured *owned* (inside its volume), *incoming* (predicted to enter within 5 min, cleared
+  level respected) or *other*. Ownership is geometric until handoffs / track assumption arrive
+  with multi-sector sessions (Phase 3). Public sector boundaries are rare (FAA TRACON sectors
+  are internal), so pack definitions author them; the NY pack ships synthetic wedges.
+- **Track tools:** speed vectors are drawn one dash per minute; clicking a track symbol shows
+  its remaining route (direct fix, route fixes, runway when cleared for an approach) with ETOs
+  at the current ground speed.
 
 ---
 

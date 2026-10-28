@@ -3,8 +3,9 @@
  *
  * Each sweep delivers a sim `Snapshot`; the picture projects every aircraft to
  * local coordinates and keeps the last few positions as history dots, plus
- * per-track display settings (data block leader direction) that belong to the
- * controller, not the sim.
+ * per-track display settings that belong to the controller, not the sim:
+ * data block leader direction, whether the route is shown, and the track's
+ * ownership seen from the active sector.
  */
 import {
   normDeg,
@@ -14,6 +15,8 @@ import {
   type Snapshot,
   type StereographicProjection,
 } from '@atc-app/sim';
+import { ownershipOf, sectorOf, type MapArea } from './sectors';
+import { genericLabel, type Ownership } from './systems';
 
 /**
  * Data block position around the target, numpad layout as on STARS / most
@@ -37,6 +40,12 @@ export interface TrafficTrack {
   /** Previous sweep positions, newest first. */
   history: LocalXY[];
   leader: LeaderDirection;
+  /** Seen from the active sector (all "owned" when no sector is active). */
+  ownership: Ownership;
+  /** Sector the aircraft is in, if any. */
+  sector?: string;
+  /** Route with ETOs shown (toggled by clicking the track symbol). */
+  routeShown: boolean;
 }
 
 export class TrafficPicture {
@@ -45,6 +54,8 @@ export class TrafficPicture {
   t = 0;
   /** Pairs in conflict alert at the latest sweep. */
   conflicts: Conflict[] = [];
+  private sectors: readonly MapArea[] = [];
+  private active: MapArea | null = null;
 
   constructor(
     private readonly projection: StereographicProjection,
@@ -66,10 +77,29 @@ export class TrafficPicture {
         prev.ac = ac;
         prev.xy = xy;
       } else {
-        this.tracks.set(ac.callsign, { callsign: ac.callsign, ac, xy, history: [], leader: DEFAULT_LEADER });
+        this.tracks.set(ac.callsign, {
+          callsign: ac.callsign, ac, xy, history: [], leader: DEFAULT_LEADER, ownership: 'owned', routeShown: false,
+        });
       }
     }
     for (const cs of [...this.tracks.keys()]) if (!seen.has(cs)) this.tracks.delete(cs);
+    this.reclassify();
+  }
+
+  /** Sets the unit's sectors and the active one (null = all sectors), and reclassifies. */
+  setSectors(sectors: readonly MapArea[], activeId: string | null): void {
+    this.sectors = sectors;
+    this.active = sectors.find((s) => s.id === activeId) ?? null;
+    this.reclassify();
+  }
+
+  private reclassify(): void {
+    for (const t of this.tracks.values()) {
+      t.ownership = ownershipOf(t.ac, t.xy, this.active);
+      const s = sectorOf(t.ac, t.xy, this.sectors);
+      if (s) t.sector = s.id;
+      else delete t.sector;
+    }
   }
 
   get(callsign: string): TrafficTrack | undefined {
@@ -89,28 +119,29 @@ export class TrafficPicture {
     if (t) t.leader = dir;
   }
 
+  /** Shows / hides the route with ETOs; returns the new state. */
+  toggleRoute(callsign: string): boolean {
+    const t = this.tracks.get(callsign);
+    if (!t) return false;
+    t.routeShown = !t.routeShown;
+    return t.routeShown;
+  }
+
   clear(): void {
     this.tracks.clear();
     this.conflicts = [];
   }
 }
 
-/** Vertical speed (ft/min) below which the trend shows level. */
-const LEVEL_FPM = 300;
-
-const level = (ft: number) => String(Math.max(0, Math.round(ft / 100))).padStart(3, '0');
-
 /**
- * Full data block, three lines:
+ * Generic full data block, three lines:
  *   `DAL1192`
  *   `160↓110 29`  altitude (100 ft), trend, assigned level while climbing/descending, ground speed (10 kt)
  *   `B739 KJFK`   type, destination
  */
 export function dataBlockLines(ac: AircraftState): [string, string, string] {
-  const trend = ac.vsFpm > LEVEL_FPM ? '↑' : ac.vsFpm < -LEVEL_FPM ? '↓' : ' ';
-  const assigned = Math.abs(ac.target.altFt - ac.altFt) >= 100 ? level(ac.target.altFt) : '';
-  const gs = String(Math.round(ac.gsKt / 10)).padStart(2, '0');
-  return [ac.callsign, `${level(ac.altFt)}${trend}${assigned} ${gs}`, [ac.icaoType, ac.destination].filter(Boolean).join(' ')];
+  const [a, b, c] = genericLabel(ac);
+  return [a!, b!, c!];
 }
 
 /** Magnetic heading for readouts (sim headings are true). */

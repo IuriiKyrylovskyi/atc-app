@@ -13,5 +13,36 @@
       "large_airport",
       "medium_airport"
     ]
-  }
+  },
+  "sectorsSource": "NY sector definitions (atc-app, synthetic: wedges around KJFK, not the real N90/ZNY boundaries)",
+  "sectors": [
+    {
+      "id": "EWR",
+      "name": "Newark",
+      "floorFt": 0,
+      "ceilingFt": 17000,
+      "wedge": { "centre": "KJFK", "fromDeg": 210, "toDeg": 330, "outerNm": 45 }
+    },
+    {
+      "id": "LGA",
+      "name": "LaGuardia",
+      "floorFt": 0,
+      "ceilingFt": 17000,
+      "wedge": { "centre": "KJFK", "fromDeg": 330, "toDeg": 90, "outerNm": 45 }
+    },
+    {
+      "id": "KEN",
+      "name": "Kennedy",
+      "floorFt": 0,
+      "ceilingFt": 17000,
+      "wedge": { "centre": "KJFK", "fromDeg": 90, "toDeg": 210, "outerNm": 45 }
+    },
+    {
+      "id": "HIGH",
+      "name": "NY High",
+      "floorFt": 17000,
+      "ceilingFt": 33000,
+      "wedge": { "centre": "KJFK", "fromDeg": 0, "toDeg": 360, "outerNm": 45 }
+    }
+  ]
 }

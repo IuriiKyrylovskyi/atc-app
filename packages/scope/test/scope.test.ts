@@ -6,11 +6,23 @@ import {
   dataBlockLines,
   DECLUTTER,
   DEFAULT_TRAFFIC_OPTIONS,
+  findSystem,
+  GENERIC_SYSTEM,
   hitTest,
+  hitTestDetail,
+  inVolume,
+  INDRA_SYSTEM,
   leaderVector,
+  ownershipOf,
+  pointInPolygon,
+  routePath,
   ScopeRenderer,
   ScopeView,
+  SELEX_SYSTEM,
+  selexLabel,
+  selexSelectedLabel,
   TrafficPicture,
+  verticalLimits,
   type Ctx2D,
 } from '../src';
 
@@ -113,17 +125,26 @@ describe('video map', () => {
   });
 });
 
-function fakeCtx(): Ctx2D & { texts: string[] } {
+type FakeCtx = Ctx2D & { texts: string[]; dashes: number[][]; fills: string[]; rects: string[] };
+
+function fakeCtx(): FakeCtx {
   const texts: string[] = [];
+  const dashes: number[][] = [];
+  const fills: string[] = [];
+  const rects: string[] = [];
   const noop = () => undefined;
-  return {
-    texts,
-    setTransform: noop, fillRect: noop, beginPath: noop, moveTo: noop, lineTo: noop, stroke: noop,
-    fill: noop, arc: noop, closePath: noop, setLineDash: noop, save: noop, restore: noop,
+  const ctx = {
+    texts, dashes, fills, rects,
+    setTransform: noop, beginPath: noop, moveTo: noop, lineTo: noop, stroke: noop,
+    arc: noop, closePath: noop, save: noop, restore: noop,
+    fill: () => void fills.push(String(ctx.fillStyle)),
+    fillRect: () => void rects.push(String(ctx.fillStyle)),
+    setLineDash: (d: number[]) => void dashes.push([...d]),
     fillText: (t: string) => void texts.push(t),
     measureText: (t: string) => ({ width: t.length * 7 }) as TextMetrics,
-    fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textBaseline: 'middle', textAlign: 'left',
-  } as unknown as Ctx2D & { texts: string[] };
+    fillStyle: '' as unknown, strokeStyle: '', lineWidth: 1, font: '', textBaseline: 'middle', textAlign: 'left',
+  };
+  return ctx as unknown as FakeCtx;
 }
 
 describe('renderer declutter', () => {
@@ -250,5 +271,134 @@ describe('traffic', () => {
     expect(off.texts).not.toContain('DAL1192 CA');
 
     expect(conflictLabel({ ...predicted, kind: 'loss', lateralNm: 2.43, verticalFt: 600 })).toBe('2.4 NM 06');
+  });
+});
+
+describe('ATC systems, sectors, ownership, routes', () => {
+  const NM = M_PER_NM;
+  // Two sectors: WEST (x < 0) and EAST (x > 0), 20 NM squares, SFC–170; HIGH above both.
+  const square = (west: boolean) => {
+    const x0 = west ? -20 : 0;
+    const x1 = west ? 0 : 20;
+    return [
+      destination(destination(REF, 90, x0 * NM), 180, 20 * NM),
+      destination(destination(REF, 90, x1 * NM), 180, 20 * NM),
+      destination(destination(REF, 90, x1 * NM), 0, 20 * NM),
+      destination(destination(REF, 90, x0 * NM), 0, 20 * NM),
+    ].map((p) => (Math.abs(p.lon - REF.lon) < 1e-12 ? { ...p, lon: REF.lon } : p));
+  };
+  const sectorPack: AirspacePack = {
+    ...pack,
+    fixes: [...pack.fixes, { id: 'EFIX', kind: 'waypoint', pos: destination(REF, 90, 10 * NM) }],
+    areas: [
+      { id: 'WEST', kind: 'sector', name: 'West', polygon: square(true), floorFt: 0, ceilingFt: 17_000 },
+      { id: 'EAST', kind: 'sector', name: 'East', polygon: square(false), floorFt: 0, ceilingFt: 17_000 },
+      { id: 'R1', kind: 'restricted', polygon: square(false), floorFt: 0, ceilingFt: 5000 },
+    ],
+  };
+  const map = buildVideoMap(sectorPack);
+  const west = map.sectors.find((s) => s.id === 'WEST')!;
+  const east = map.sectors.find((s) => s.id === 'EAST')!;
+  const ac = (over: Partial<AircraftState> = {}): AircraftState => ({
+    callsign: 'TST1', icaoType: 'A320', wake: 'M', squawk: '2101', origin: 'scenario',
+    pos: destination(REF, 270, 10 * NM), altFt: 12_000, headingTrue: 270, trackTrue: 270,
+    casKt: 250, tasKt: 300, gsKt: 300, mach: 0.5, vsFpm: 0, destination: 'KJFK',
+    target: { altFt: 12_000, headingTrue: 270, turn: null, casKt: 250, mach: null, vsFpm: null, directFix: null, route: [] },
+    ...over,
+  });
+  const xyOf = (a: AircraftState) => map.projection.toLocal(a.pos);
+
+  it('splits pack areas into sectors and other areas, with labels and vertical limits', () => {
+    expect(map.sectors.map((s) => [s.id, s.name])).toEqual([['WEST', 'West'], ['EAST', 'East']]);
+    expect(map.areas.map((a) => a.kind)).toEqual(['restricted']);
+    expect(west.labelAt.x).toBeLessThan(0);
+    expect(verticalLimits(west)).toBe('000–170');
+    expect(pointInPolygon({ x: -5 * NM, y: 0 }, west.polygon)).toBe(true);
+    expect(pointInPolygon({ x: 5 * NM, y: 0 }, west.polygon)).toBe(false);
+    // Floor inclusive, ceiling exclusive.
+    expect(inVolume(west, { x: -5 * NM, y: 0 }, 0)).toBe(true);
+    expect(inVolume(west, { x: -5 * NM, y: 0 }, 17_000)).toBe(false);
+  });
+
+  it('classifies owned / incoming / other from the active sector', () => {
+    const inWest = ac();
+    expect(ownershipOf(inWest, xyOf(inWest), west)).toBe('owned');
+    expect(ownershipOf(inWest, xyOf(inWest), null)).toBe('owned'); // all sectors
+    // In the west, flying east at 300 kt: enters EAST in ~2 min → incoming.
+    const eastbound = ac({ headingTrue: 90, trackTrue: 90 });
+    expect(ownershipOf(eastbound, xyOf(eastbound), east)).toBe('incoming');
+    // Westbound away from EAST: other.
+    expect(ownershipOf(inWest, xyOf(inWest), east)).toBe('other');
+    // Above the sector, descending into it within the look-ahead: incoming.
+    const descending = ac({ altFt: 19_000, vsFpm: -2000, target: { ...ac().target, altFt: 11_000 } });
+    expect(ownershipOf(descending, xyOf(descending), west)).toBe('incoming');
+    // Same, but cleared to stay above: other.
+    const staying = ac({ altFt: 19_000, vsFpm: -2000, target: { ...ac().target, altFt: 18_000 } });
+    expect(ownershipOf(staying, xyOf(staying), west)).toBe('other');
+  });
+
+  it('keeps ownership and sector on the traffic picture', () => {
+    const pic = new TrafficPicture(map.projection);
+    pic.setSectors(map.sectors, 'EAST');
+    pic.update({ t: 0, aircraft: [ac(), ac({ callsign: 'TST2', headingTrue: 90, trackTrue: 90 })], conflicts: [], events: [] });
+    expect(pic.get('TST1')).toMatchObject({ ownership: 'other', sector: 'WEST' });
+    expect(pic.get('TST2')).toMatchObject({ ownership: 'incoming', sector: 'WEST' });
+    pic.setSectors(map.sectors, null);
+    expect(pic.list().map((t) => t.ownership)).toEqual(['owned', 'owned']);
+    expect(pic.toggleRoute('TST1')).toBe(true);
+    expect(pic.toggleRoute('TST1')).toBe(false);
+  });
+
+  it('computes the route with ETOs at the current ground speed', () => {
+    // 10 NM west of REF, direct EFIX (10 NM east) then the runway threshold.
+    const a = ac({ target: { ...ac().target, directFix: 'EFIX', route: [] }, gsKt: 300 });
+    const fixPos = (id: string) => sectorPack.fixes.find((f) => f.id === id)?.pos;
+    const r = routePath(a, 100, map.projection, fixPos, { id: 'RW04', pos: REF });
+    expect(r.points.map((p) => p.id)).toEqual(['EFIX', 'RW04']);
+    // 20 NM at 300 kt = 240 s; then back 10 NM = 120 s more.
+    expect(r.points[0]!.etoS).toBeCloseTo(340, 0);
+    expect(r.points[1]!.etoS).toBeCloseTo(460, 0);
+  });
+
+  it('formats labels per system', () => {
+    const a = ac({ altFt: 34_100, vsFpm: -1800, gsKt: 449, target: { ...ac().target, altFt: 22_000, directFix: 'LIDNO' } });
+    expect(selexLabel(a)).toEqual(['TST1', '341↓ 220', 'G449']);
+    expect(selexSelectedLabel(a, { ownership: 'owned', sector: 'TC2', nextFix: 'LIDNO' })).toEqual([
+      'TST1 M TC2', '341↓ 220 KJFK', 'G449 250 LIDNO', 'A320 2101',
+    ]);
+    expect(INDRA_SYSTEM.traffic.label(a, { ownership: 'owned' })).toEqual(['TST1', '341↓220', 'A320 449']);
+    expect(GENERIC_SYSTEM.traffic.label(a, { ownership: 'owned' })[1]).toBe('341↓220 45');
+    expect(findSystem('selex')).toBe(SELEX_SYSTEM);
+    expect(findSystem('nope')).toBe(GENERIC_SYSTEM);
+  });
+
+  it('draws the active sector, boxed selected label, minute-dash vectors and ETOs', () => {
+    const view = new ScopeView({ widthPx: 1000, heightPx: 800, rangeNm: 25 });
+    const ctx = fakeCtx();
+    const r = new ScopeRenderer(ctx);
+    r.draw(view, map, undefined, SELEX_SYSTEM, { activeSector: 'EAST' });
+    expect(ctx.fills).toEqual(expect.arrayContaining([SELEX_SYSTEM.map.airspace, SELEX_SYSTEM.map.activeSector, SELEX_SYSTEM.map.restrictedFill]));
+    expect(ctx.texts).toEqual(expect.arrayContaining(['WEST', 'EAST', '000–170']));
+
+    const pic = new TrafficPicture(map.projection);
+    pic.setSectors(map.sectors, 'WEST');
+    const a = ac({ target: { ...ac().target, directFix: 'EFIX' } });
+    pic.update({ t: 60, aircraft: [a], conflicts: [], events: [] });
+    const fixPos = (id: string) => sectorPack.fixes.find((f) => f.id === id)?.pos;
+    const routes = [routePath(a, 60, map.projection, fixPos)];
+    const tctx = fakeCtx();
+    const res = new ScopeRenderer(tctx).drawTraffic(
+      view, pic.list(), { ...DEFAULT_TRAFFIC_OPTIONS, vectorMinutes: 2, selected: 'TST1' }, [], SELEX_SYSTEM, routes
+    );
+    // Boxed label: black box, extended lines.
+    expect(tctx.rects).toContain('#000000');
+    expect(tctx.texts).toEqual(expect.arrayContaining(['TST1 M WEST', 'EFIX 00:05:00']));
+    // 300 kt = 5 NM a minute; at 25 NM range on 800 px, 16 px/NM → 80 px dashes minus a 4 px gap.
+    expect(tctx.dashes).toContainEqual([76, 4]);
+    // Clicking the symbol is a "target" hit, the label a "label" hit.
+    const s = view.toScreen(pic.get('TST1')!.xy);
+    expect(hitTestDetail(res.hits, s)?.kind).toBe('target');
+    expect(hitTestDetail(res.hits, { x: s.x + 30, y: s.y - 30 })?.kind).toBe('label');
+    expect(hitTest(res.hits, s)).toBe('TST1');
   });
 });

@@ -8,9 +8,43 @@ import {
   importCifpArea,
   parsePackDefinition,
   readCifpRecords,
+  sectorArea,
+  sectorDefinitionSchema,
   summarizeDiff,
   type PackDefinition,
 } from '../src';
+
+describe('sector definitions', () => {
+  const C = { lat: 40.64, lon: -73.78 };
+  const lookup = (id: string) => (id === 'CTR' ? C : id === 'NORTH' ? destination(C, 0, 10 * 1852) : undefined);
+  const parse = (s: unknown) => sectorDefinitionSchema.parse(s);
+
+  it('builds a wedge from the centre between two bearings', () => {
+    const a = sectorArea(parse({ id: 'E', name: 'East', floorFt: 0, ceilingFt: 17000, wedge: { centre: 'CTR', fromDeg: 30, toDeg: 150, outerNm: 20 } }), lookup);
+    expect(a).toMatchObject({ id: 'E', kind: 'sector', name: 'East', floorFt: 0, ceilingFt: 17000 });
+    expect(a.polygon[0]).toEqual(C);
+    // 120° in 5° steps: 25 arc points after the centre.
+    expect(a.polygon).toHaveLength(26);
+    for (const p of a.polygon.slice(1)) expect(distanceM(C, p) / 1852).toBeCloseTo(20, 3);
+  });
+
+  it('wraps through north, builds rings and full circles', () => {
+    const wrap = sectorArea(parse({ id: 'N', name: 'N', floorFt: 0, ceilingFt: 1, wedge: { centre: 'CTR', fromDeg: 330, toDeg: 90, outerNm: 20 } }), lookup);
+    expect(wrap.polygon).toHaveLength(26);
+    const ring = sectorArea(parse({ id: 'R', name: 'R', floorFt: 0, ceilingFt: 1, wedge: { centre: 'CTR', fromDeg: 0, toDeg: 90, innerNm: 5, outerNm: 20 } }), lookup);
+    expect(ring.polygon).toHaveLength(38); // 19 outer + 19 inner points
+    const full = sectorArea(parse({ id: 'F', name: 'F', floorFt: 0, ceilingFt: 1, wedge: { centre: 'CTR', fromDeg: 0, toDeg: 360, outerNm: 20 } }), lookup);
+    expect(full.polygon).toHaveLength(72);
+  });
+
+  it('takes polygons of fixes and coordinates, and rejects bad definitions', () => {
+    const p = sectorArea(parse({ id: 'P', name: 'P', floorFt: 0, ceilingFt: 1, polygon: ['CTR', 'NORTH', { lat: 40.7, lon: -73.6 }] }), lookup);
+    expect(p.polygon).toHaveLength(3);
+    expect(() => sectorArea(parse({ id: 'X', name: 'X', floorFt: 0, ceilingFt: 1, polygon: ['CTR', 'NOPE', 'NORTH'] }), lookup)).toThrow(/unknown point NOPE/);
+    expect(sectorDefinitionSchema.safeParse({ id: 'B', name: 'B', floorFt: 5, ceilingFt: 1, polygon: ['CTR', 'NORTH', 'CTR'] }).success).toBe(false);
+    expect(sectorDefinitionSchema.safeParse({ id: 'B', name: 'B', floorFt: 0, ceilingFt: 1 }).success).toBe(false);
+  });
+});
 
 const fixture = readFileSync(fileURLToPath(new URL('./fixtures/cifp-kjfk-2611.txt', import.meta.url)), 'latin1');
 const rec = readCifpRecords(fixture);
