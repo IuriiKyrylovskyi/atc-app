@@ -21,7 +21,7 @@
     "dist": "pnpm --filter @atc-app/app build && pnpm --filter @atc-app/electron build && pnpm --filter @atc-app/electron exec electron-builder --publish never --config electron-builder.yml"
   },
   "devDependencies": {
-    "cross-env": "^7.0.3",
+    "cross-env": "^10.1.0",
     "electron": "^26.0.0",
     "electron-builder": "^24.13.3",
     "esbuild": "^0.21.0",
