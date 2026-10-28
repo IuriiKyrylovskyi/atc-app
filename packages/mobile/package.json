@@ -23,7 +23,7 @@
     "@capacitor/screen-orientation": "7.0.4",
     "@capacitor/status-bar": "7.0.6",
     "@revenuecat/purchases-capacitor": "11.3.2",
-    "vue": "^3.4.21"
+    "vue": "^3.5.44"
   },
   "devDependencies": {
     "@capacitor/cli": "7.4.4",
