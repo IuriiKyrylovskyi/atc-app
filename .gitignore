@@ -143,3 +143,8 @@ packs/dist/
 
 # Source folders named "build" are code, not output
 !packages/*/src/build/
+
+# The free-backgrounds manifest is source (imported by backgroundAssetService)
+!packages/app/src/assets/backgrounds/
+packages/app/src/assets/backgrounds/*
+!packages/app/src/assets/backgrounds/manifest.json

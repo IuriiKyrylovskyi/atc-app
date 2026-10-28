@@ -1,0 +1,119 @@
+/**
+ * Video map: everything static on the scope, projected once into local metres
+ * so drawing a frame is only a scale + offset per point.
+ */
+import {
+  destination,
+  normDeg,
+  StereographicProjection,
+  M_PER_NM,
+  type AirspacePack,
+  type FixKind,
+  type LatLon,
+  type LocalXY,
+} from '@atc-app/sim';
+
+export interface MapFix {
+  id: string;
+  kind: FixKind;
+  xy: LocalXY;
+  /** Used by an airway or procedure of the pack (shown at wider ranges). */
+  onRoute: boolean;
+}
+
+export interface MapRunway {
+  airport: string;
+  id: string;
+  threshold: LocalXY;
+  end: LocalXY;
+  widthM: number;
+  /** Extended centreline (from threshold outwards) with 1 NM tick points; ILS runways only. */
+  centreline?: { from: LocalXY; to: LocalXY; ticks: LocalXY[]; headingTrue: number };
+}
+
+export interface MapAirway {
+  id: string;
+  from: LocalXY;
+  to: LocalXY;
+}
+
+export interface MapAirport {
+  icao: string;
+  name: string;
+  xy: LocalXY;
+}
+
+export interface VideoMap {
+  packId: string;
+  name: string;
+  airac: string;
+  reference: LatLon;
+  projection: StereographicProjection;
+  airports: MapAirport[];
+  runways: MapRunway[];
+  fixes: MapFix[];
+  airways: MapAirway[];
+}
+
+export interface VideoMapOptions {
+  /** Length of extended centrelines, NM. */
+  centrelineNm?: number;
+}
+
+export function buildVideoMap(pack: AirspacePack, options: VideoMapOptions = {}): VideoMap {
+  const proj = new StereographicProjection(pack.meta.reference);
+  const L = (p: LatLon) => proj.toLocal(p);
+  const centrelineNm = options.centrelineNm ?? 10;
+
+  const fixPos = new Map(pack.fixes.map((f) => [f.id, f.pos]));
+  const onRoute = new Set<string>();
+  for (const a of pack.airways ?? []) for (const s of a.segments) onRoute.add(s.from).add(s.to);
+  for (const p of pack.procedures ?? []) for (const l of p.legs) if (l.fix) onRoute.add(l.fix);
+
+  const runways: MapRunway[] = pack.runways.map((r) => {
+    const out: MapRunway = {
+      airport: r.airport,
+      id: r.id,
+      threshold: L(r.threshold),
+      end: L(r.end),
+      widthM: r.widthM,
+    };
+    if (r.ils) {
+      // Outbound from the threshold, opposite to the landing direction.
+      const outbound = normDeg(r.ils.courseTrue + 180);
+      const ticks: LocalXY[] = [];
+      for (let nm = 1; nm <= centrelineNm; nm++) ticks.push(L(destination(r.threshold, outbound, nm * M_PER_NM)));
+      out.centreline = {
+        from: L(r.threshold),
+        to: L(destination(r.threshold, outbound, centrelineNm * M_PER_NM)),
+        ticks,
+        headingTrue: r.ils.courseTrue,
+      };
+    }
+    return out;
+  });
+
+  const airways: MapAirway[] = [];
+  for (const a of pack.airways ?? []) {
+    for (const s of a.segments) {
+      const from = fixPos.get(s.from);
+      const to = fixPos.get(s.to);
+      if (from && to) airways.push({ id: a.id, from: L(from), to: L(to) });
+    }
+  }
+
+  return {
+    packId: pack.meta.id,
+    name: pack.meta.name,
+    airac: pack.meta.airac,
+    reference: pack.meta.reference,
+    projection: proj,
+    airports: pack.airports.map((a) => ({ icao: a.icao, name: a.name, xy: L(a.arp) })),
+    runways,
+    // Runway thresholds and airport points are drawn as runways / airports.
+    fixes: pack.fixes
+      .filter((f) => f.kind !== 'runway' && f.kind !== 'airport')
+      .map((f) => ({ id: f.id, kind: f.kind, xy: L(f.pos), onRoute: onRoute.has(f.id) })),
+    airways,
+  };
+}

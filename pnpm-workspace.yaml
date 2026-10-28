@@ -7,5 +7,6 @@ packages:
   - 'packages/voice'
   - 'packages/traffic'
   - 'packages/scenario'
+  - 'packages/scope'
   - 'apps/*' # optional, if you later add separate apps
   - 'tools/*' # optional utilities, CLI tools
