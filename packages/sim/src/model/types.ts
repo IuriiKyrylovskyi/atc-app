@@ -231,13 +231,40 @@ export type SimEvent =
   | { t: number; type: 'clearance_rejected'; callsign: string; clearance: Clearance; reason: string }
   | { t: number; type: 'message_rejected'; message: Message; reason: string }
   | { t: number; type: 'fix_reached'; callsign: string; fix: string }
-  | { t: number; type: 'route_ended'; callsign: string; fix: string };
+  | { t: number; type: 'route_ended'; callsign: string; fix: string }
+  /** STCA: loss of separation predicted within `inS` s (0 = already lost). */
+  | { t: number; type: 'conflict_alert'; a: string; b: string; inS: number }
+  | { t: number; type: 'separation_lost'; a: string; b: string; lateralNm: number; verticalFt: number }
+  | {
+      t: number;
+      type: 'separation_restored';
+      a: string;
+      b: string;
+      durationS: number;
+      minLateralNm: number;
+      minVerticalFt: number;
+    }
+  | { t: number; type: 'conflict_ended'; a: string; b: string };
+
+/** A pair the separation monitor is alerting on. */
+export interface Conflict {
+  /** Callsigns, alphabetical. */
+  a: string;
+  b: string;
+  kind: 'loss' | 'predicted';
+  /** Seconds to the predicted loss (0 for a loss). */
+  inS: number;
+  lateralNm: number;
+  verticalFt: number;
+}
 
 /** What the scope receives every radar sweep. */
 export interface Snapshot {
   /** Simulation time, seconds since session start. */
   t: number;
   aircraft: AircraftState[];
+  /** Pairs currently in conflict alert (predicted or lost separation). */
+  conflicts: Conflict[];
   /** Events since the previous snapshot. */
   events: SimEvent[];
 }

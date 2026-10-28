@@ -12,7 +12,15 @@
  */
 import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { courseTo, distanceNm, normDeg, type AircraftState, type LatLon, type Snapshot } from '@atc-app/sim';
+import {
+  courseTo,
+  distanceNm,
+  normDeg,
+  type AircraftState,
+  type AirspacePack,
+  type LatLon,
+  type Snapshot,
+} from '@atc-app/sim';
 import {
   buildVideoMap,
   DEFAULT_LAYERS,
@@ -61,12 +69,17 @@ let picture: TrafficPicture | null = null;
 let session: SimSession | null = null;
 let hits: TrafficHit[] = [];
 let fixIds = new Set<string>();
+let loadedPack: AirspacePack | null = null;
+let blinkTimer: ReturnType<typeof setInterval> | null = null;
+const conflictCount = ref(0);
+const scenarioId = ref('none');
+const scenarioOptions = ref<{ id: string; name: string }[]>([]);
 
 // ── Command line + comms log ───────────────────────────────────────────────
 interface LogLine {
   id: number;
   t: number;
-  kind: 'atc' | 'pilot' | 'unable' | 'error';
+  kind: 'atc' | 'pilot' | 'unable' | 'error' | 'alert' | 'info';
   who: string;
   text: string;
 }
@@ -103,7 +116,7 @@ function requestDraw(): void {
     if (!renderer || !map.value) return;
     const t0 = performance.now();
     renderer.draw(view, map.value, layers);
-    hits = picture ? renderer.drawTraffic(view, picture.list(), traffic).hits : [];
+    hits = picture ? renderer.drawTraffic(view, picture.list(), traffic, picture.conflicts).hits : [];
     frameMs.value = performance.now() - t0;
     rangeNm.value = view.rangeNm;
   });
@@ -129,10 +142,19 @@ function onSnapshot(s: Snapshot): void {
   for (const e of s.events) {
     if (e.type === 'clearance_rejected') addLog('unable', e.callsign, unable(e.callsign, e.reason).text, e.t);
     else if (e.type === 'message_rejected') addLog('error', e.message.to, e.reason, e.t);
+    else if (e.type === 'conflict_alert') {
+      addLog('alert', 'CA', `${e.a} / ${e.b} ${e.inS > 0 ? `loss in ${Math.round(e.inS)} s` : 'separation lost'}`, e.t);
+    } else if (e.type === 'separation_lost') {
+      addLog('alert', 'LOS', `${e.a} / ${e.b} ${e.lateralNm.toFixed(1)} NM ${Math.round(e.verticalFt)} ft`, e.t);
+    } else if (e.type === 'separation_restored') {
+      const min = `min ${e.minLateralNm.toFixed(1)} NM / ${Math.round(e.minVerticalFt)} ft`;
+      addLog('info', 'SEP', `${e.a} / ${e.b} restored after ${Math.round(e.durationS)} s, ${min}`, e.t);
+    }
   }
   picture.update(s);
   simTime.value = s.t;
   aircraftCount.value = picture.size;
+  conflictCount.value = s.conflicts.length;
   if (traffic.selected && !picture.get(traffic.selected)) traffic.selected = null;
   selectedAc.value = traffic.selected ? picture.get(traffic.selected)!.ac : null;
   requestDraw();
@@ -427,8 +449,9 @@ const selectedInfo = computed(() => {
 });
 
 // ── Lifecycle ──────────────────────────────────────────────────────────────
-async function startTraffic(pack: Parameters<typeof buildScenario>[1], m: VideoMap): Promise<void> {
+async function startTraffic(pack: AirspacePack, m: VideoMap): Promise<void> {
   const wanted = typeof route.query.scenario === 'string' ? route.query.scenario : undefined;
+  scenarioId.value = wanted ?? scenariosForPack(pack.meta.id)[0]?.id ?? 'none';
   if (wanted === 'none') return;
   const script = wanted ? findScenario(wanted) : scenariosForPack(pack.meta.id)[0];
   if (!script) {
@@ -439,6 +462,43 @@ async function startTraffic(pack: Parameters<typeof buildScenario>[1], m: VideoM
   picture = new TrafficPicture(m.projection);
   scenarioName.value = script.name;
   session = await SimSession.start(built.config, built.traffic, onSnapshot);
+  session.rate = simRate.value;
+  session.paused = paused.value;
+}
+
+function stopTraffic(): void {
+  session?.dispose();
+  session = null;
+  picture = null;
+  scenarioName.value = null;
+  aircraftCount.value = 0;
+  conflictCount.value = 0;
+  simTime.value = 0;
+  log.value = [];
+  select(null);
+}
+
+/** Switches scenario in place (keeps the view, restarts the sim). */
+async function changeScenario(id: string): Promise<void> {
+  if (!loadedPack || !map.value) return;
+  await router.replace({ query: { ...route.query, scenario: id } });
+  stopTraffic();
+  try {
+    await startTraffic(loadedPack, map.value);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e);
+  }
+  requestDraw();
+}
+
+// "CA" blinks about twice a second while any pair is alerting.
+function blink(): void {
+  if (picture && picture.conflicts.length > 0) {
+    traffic.blinkOn = !traffic.blinkOn;
+    requestDraw();
+  } else if (!traffic.blinkOn) {
+    traffic.blinkOn = true;
+  }
 }
 
 onMounted(async () => {
@@ -447,8 +507,11 @@ onMounted(async () => {
   resizeObserver = new ResizeObserver(fitCanvas);
   if (host.value) resizeObserver.observe(host.value);
   window.addEventListener('keydown', onKey);
+  blinkTimer = setInterval(blink, 500);
   try {
     const { pack } = await loadPack(String(route.params.packId));
+    loadedPack = pack;
+    scenarioOptions.value = scenariosForPack(pack.meta.id).map((s) => ({ id: s.id, name: s.name }));
     const m = buildVideoMap(pack);
     map.value = m;
     fixIds = new Set(pack.fixes.map((f) => f.id));
@@ -466,6 +529,7 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect();
   window.removeEventListener('keydown', onKey);
   if (frame) cancelAnimationFrame(frame);
+  if (blinkTimer) clearInterval(blinkTimer);
   session?.dispose();
   session = null;
 });
@@ -487,8 +551,18 @@ onBeforeUnmount(() => {
     <div class="panel top-left">
       <button class="btn" @click="router.push({ name: 'home' })">HOME</button>
       <span v-if="map" class="title">
-        {{ map.name }} · AIRAC {{ map.airac }}<template v-if="scenarioName"> · {{ scenarioName }}</template>
+        {{ map.name }} · AIRAC {{ map.airac }}
       </span>
+      <select
+        v-if="map && scenarioOptions.length"
+        class="btn scenario"
+        :value="scenarioId"
+        title="Scenario"
+        @change="changeScenario(($event.target as HTMLSelectElement).value)"
+      >
+        <option v-for="s in scenarioOptions" :key="s.id" :value="s.id">{{ s.name }}</option>
+        <option value="none">No traffic</option>
+      </select>
     </div>
 
     <div class="panel top-right">
@@ -568,6 +642,7 @@ onBeforeUnmount(() => {
     <div class="panel bottom-left">
       <span>RNG {{ rangeNm.toFixed(rangeNm < 10 ? 1 : 0) }} NM</span>
       <span v-if="scenarioName">ACFT {{ aircraftCount }}</span>
+      <span v-if="conflictCount" class="alert-count">CA {{ conflictCount }}</span>
       <span v-if="readout">{{ readout }}</span>
       <span class="dim">{{ frameMs.toFixed(1) }} ms</span>
     </div>
@@ -678,6 +753,18 @@ onBeforeUnmount(() => {
 }
 .log-line.pilot {
   color: #8fe3a8;
+}
+.log-line.alert {
+  color: #ff5a4f;
+}
+.log-line.info {
+  color: #5f8396;
+}
+.alert-count {
+  color: #ff5a4f;
+}
+.scenario {
+  max-width: 220px;
 }
 .log-line.unable,
 .log-line.error {
