@@ -39,6 +39,9 @@ export const ENV = {
   // 'true' loads levels_full_example.json locally instead of the paid bucket (dev only).
   VITE_USE_LOCAL_FULL_LEVELS: env.VITE_USE_LOCAL_FULL_LEVELS ?? 'mocked_VITE_USE_LOCAL_FULL_LEVELS',
 
+  // Radar scope (new ATC engine, in development). Always on in dev builds; 'true' enables it elsewhere.
+  VITE_FEATURE_SCOPE: env.VITE_FEATURE_SCOPE ?? 'mocked_VITE_FEATURE_SCOPE',
+
   // Debug overlay + paywall debug block. 'true' turns them on.
   VITE_SHOW_DEBUG: env.VITE_SHOW_DEBUG ?? 'mocked_VITE_SHOW_DEBUG',
 } as Record<
@@ -51,6 +54,7 @@ export const ENV = {
   | 'VITE_ADMOB_INTERSTITIAL_ID_IOS'
   | 'VITE_VERSION_CHECK_URL'
   | 'VITE_USE_LOCAL_FULL_LEVELS'
+  | 'VITE_FEATURE_SCOPE'
   | 'VITE_SHOW_DEBUG',
   string
 >;

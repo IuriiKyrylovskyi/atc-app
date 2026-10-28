@@ -11,6 +11,9 @@
     "typecheck": "vue-tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@atc-app/atc-data": "workspace:*",
+    "@atc-app/scope": "workspace:*",
+    "@atc-app/sim": "workspace:*",
     "@capacitor-community/admob": "7.2.0",
     "@capacitor/app": "7.1.0",
     "@capacitor/core": "7.4.4",

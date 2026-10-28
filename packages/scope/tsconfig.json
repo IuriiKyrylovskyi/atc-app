@@ -1,0 +1,7 @@
+{
+  "extends": "../sim/tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

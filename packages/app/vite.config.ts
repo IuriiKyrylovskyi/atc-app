@@ -3,7 +3,7 @@ import path from 'path';
 import vue from '@vitejs/plugin-vue';
 import vuetify from 'vite-plugin-vuetify';
 import { fileURLToPath } from 'url';
-import { readFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 import { execFileSync } from 'child_process';
 
 const rootPkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
@@ -24,6 +24,30 @@ const checkSkymessUpdates = (): Plugin => ({
   },
 });
 
+// Airspace packs built by `pnpm pack:build` (packs/dist) are served at /packs/
+// in dev and copied into the build, until pack hosting (Supabase Storage) exists.
+const PACKS_DIR = path.resolve(__dirname, '../../packs/dist');
+const airspacePacks = (): Plugin => ({
+  name: 'airspace-packs',
+  configureServer(server) {
+    server.middlewares.use('/packs', (req, res, next) => {
+      const name = decodeURIComponent((req.url ?? '/').split('?')[0]!.replace(/^\//, ''));
+      if (!/^[\w.@-]+\.json$/.test(name)) return next();
+      const file = path.join(PACKS_DIR, name);
+      if (!existsSync(file)) return next();
+      res.setHeader('Content-Type', 'application/json');
+      res.end(readFileSync(file));
+    });
+  },
+  generateBundle() {
+    if (!existsSync(PACKS_DIR)) return;
+    for (const name of readdirSync(PACKS_DIR)) {
+      if (!name.endsWith('.json') || name.endsWith('.diff.json')) continue;
+      this.emitFile({ type: 'asset', fileName: `packs/${name}`, source: readFileSync(path.join(PACKS_DIR, name)) });
+    }
+  },
+});
+
 export default defineConfig(({ mode }) => {
   // Capacitor sets this env var during build if you use their CLI,
   // or you can set it manually in your build scripts.
@@ -33,7 +57,7 @@ export default defineConfig(({ mode }) => {
   return {
     root: '.',
     base: './',
-    plugins: [vue(), vuetify({ autoImport: true }), checkSkymessUpdates()],
+    plugins: [vue(), vuetify({ autoImport: true }), checkSkymessUpdates(), airspacePacks()],
     define: {
       'process.env': {},
       __APP_VERSION__: JSON.stringify(rootPkg.version),

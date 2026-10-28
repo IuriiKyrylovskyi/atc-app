@@ -17,6 +17,9 @@ import { ensurePlayAllowed } from '@/composables/useSessionGuard';
 import { progressService } from '@/services/progress';
 import { ROUTE_TO_PAGE } from '@/composables/usePageName';
 import { useStripPageTransition } from '@/composables/useStripPageTransition';
+import { ENV } from '@/config/env';
+
+const SCOPE_ENABLED = import.meta.env.DEV || ENV.VITE_FEATURE_SCOPE === 'true';
 import { getAirportById } from '@/game/config/airports.config';
 import {
   getLevelByAirportAndShift,
@@ -136,6 +139,20 @@ const routes: RouteRecordRaw[] = [
     redirect: { name: 'SystemConfig' },
   },
 
+  // ── Radar scope (new ATC engine, feature-flagged) ───────────────────────────
+  // Works offline from a local pack, so it skips the account init the game
+  // screens need.
+  ...(SCOPE_ENABLED
+    ? [
+        {
+          path: '/scope/:packId',
+          name: 'Scope',
+          component: () => import('@/views/ScopeScreen.vue'),
+          meta: { requiresAuth: false, requiresPremium: false, fullscreen: true, skipInit: true },
+        } satisfies RouteRecordRaw,
+      ]
+    : []),
+
   // Anything else (old deep links, pages not ported) lands on the splash,
   // which owns the auth/init lifecycle.
   {
@@ -238,15 +255,16 @@ router.beforeEach(async (to, from, next) => {
   // Skip init for the Intro route — IntroScreen owns the init lifecycle.
   // This allows post-deletion navigation to /intro without immediately
   // creating a new anonymous user (user hasn't clicked Start Game yet).
-  const isIntroRoute = to.name === 'Intro';
+  // Routes marked `skipInit` (the offline radar scope) need no account at all.
+  const skipsInit = to.name === 'Intro' || to.meta.skipInit === true;
 
-  if (!isIntroRoute && !monetization.isInitialized) {
+  if (!skipsInit && !monetization.isInitialized) {
     await monetization.init();
   }
 
   // Safety net: if store still not initialized after init attempt
   // (e.g. deep link right after account deletion), redirect to Intro.
-  if (!isIntroRoute && !monetization.isInitialized) {
+  if (!skipsInit && !monetization.isInitialized) {
     next({ name: 'Intro' });
     return;
   }

@@ -360,7 +360,10 @@ access terms to confirm).
 - Video map: coastline, sector borders, airways, fixes, extended centrelines, areas, MVA; range rings, RBL/measure tool, range presets 5–250 NM, day/night palettes.
 - STCA / MSAW / area-infringement colouring; TCAS RA indication from pilot reports.
 - Electronic flight strips (reuse existing strip UI), synced with selection.
-- Phaser 3 (WebGL) with cached static layers; renderer reads snapshots only.
+- **Canvas 2D** (`packages/scope`), not Phaser: a radar picture is thin vector lines and small
+  monospace text, which Canvas 2D draws crisply at any pixel ratio with no texture handling.
+  The full NY TMA (~1 300 fixes, ~100 airways) draws in 1–2 ms. The renderer reads snapshots only.
+  Phaser stays for the legacy arcade game until it is retired.
 
 ---
 

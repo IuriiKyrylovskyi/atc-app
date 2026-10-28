@@ -63,18 +63,22 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [x] Pack builder CLI `pnpm pack:build <id>|--all`: definitions in `packs/*.pack.json`, CIFP + OurAirports, AIRAC-versioned output + manifest (size, sha256, counts, sources)
 - [x] Pack validation: schema, publishable licences, unique ids, runway length/heading geometry, references, areas
 - [x] Runway cross-check CIFP ↔ OurAirports (NY TMA: median 3.8 m) + diff vs. previous AIRAC build
+- [x] Packs served with the app: `/packs/manifest.json` + pack files (dev middleware, copied into builds), validated on load
 - [ ] Pack hosting in Supabase Storage + manifest/hash download in the app
 - [ ] ⛔ D1b First pack for the chosen TMA
-- [ ] `ScopeView`: pan / zoom / range presets / north-up, float-jitter-safe rendering
-- [ ] `ScopeScene` static layers: video map, fixes, airways, runways + extended centrelines, areas, MVA
+- [x] `ScopeView` (`packages/scope`): pan / zoom at cursor / pinch / range presets / north-up
+- [x] Scope static layers (Canvas 2D): airways, fixes, navaids, airports, runways, ILS extended centrelines with 1 NM ticks, declutter by range, non-overlapping labels
+- [ ] Scope layers: SID/STAR/approach paths, airspace areas, MVA
 - [ ] Targets: symbol, history dots, speed vector, leader line
 - [ ] Data blocks: configurable fields, full/limited, drag, auto-deconflict
-- [ ] Range rings, range/bearing tool, day/night palette
+- [x] Range rings, scale bar, cursor lat/lon + bearing/distance readout
+- [ ] Range/bearing tool, day/night palette
 - [ ] OpenAP export to JSON for ~15 types + type-to-reference mapping
 - [ ] Flight model v1: climb/descent by type, accel/decel, 250 kt < FL100, wind triangle
 - [ ] Text command syntax (`DAL123 FL120 H240 S220`) → `Clearance` + validation
 - [ ] Separation monitor (3/5 NM, 1000 ft) + STCA colouring, MSAW, area infringement
-- [ ] Route `/scope/:packId` behind a feature flag; open from Control Center
+- [x] Route `/scope/:packId` behind a feature flag (dev builds or `VITE_FEATURE_SCOPE=true`), no account needed
+- [ ] Open the scope from Control Center
 - [ ] Performance check: 100 aircraft at 60 fps on a mid-range laptop
 
 ## Phase 2 — Phraseology + readback
