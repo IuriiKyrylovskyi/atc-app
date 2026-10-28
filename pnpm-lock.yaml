@@ -151,7 +151,21 @@ importers:
         specifier: ^2.2.10
         version: 2.2.12(typescript@5.9.3)
 
-  packages/atc-data: {}
+  packages/atc-data:
+    dependencies:
+      '@atc-app/sim':
+        specifier: workspace:*
+        version: link:../sim
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.6
+        version: 3.2.7(@types/debug@4.1.12)(@types/node@24.7.0)(less@4.9.0)(sass@1.94.0)(terser@5.46.1)
 
   packages/electron:
     dependencies:
@@ -4538,6 +4552,9 @@ packages:
   yocto-queue@0.1.0:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
+
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
 snapshots:
 
@@ -9271,3 +9288,5 @@ snapshots:
   yn@3.1.1: {}
 
   yocto-queue@0.1.0: {}
+
+  zod@4.6.7: {}

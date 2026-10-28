@@ -43,7 +43,8 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [x] Magnetic variation (WMM-2025 via `geomagnetism`) true ↔ magnetic + tests
 - [x] Atmosphere: ISA, CAS ↔ TAS ↔ Mach, crossover altitude + tests
 - [x] TypeScript types: `AirspacePack`, `Aircraft`, `Clearance`, `Message`, `Snapshot`, `SimEvent`
-- [ ] JSON schemas for packs + `ScenarioSpec` type — moved to Phase 1 (with the importer that produces packs)
+- [x] JSON schema for packs (zod in `atc-data`, synced with sim types at compile time, JSON Schema export)
+- [ ] `ScenarioSpec` type — with the scenario generator (Phase 7)
 - [x] Sim clock: fixed step 0.5 s, carry-over of fractional time (sweep timing, pause and time compression are the driver's job — Phase 1 scope loop)
 - [x] Seeded RNG + event log (every clearance / alert / event timestamped)
 - [x] Snapshot / restore of full sim state (needed for wind, reset, branch)
@@ -55,9 +56,11 @@ the defaults below; the open items are only about paid upgrades or permissions.
 
 ## Phase 1 — US data + scope MVP + text commands
 
-- [ ] Importers: FAA CIFP (ARINC 424), NASR, OurAirports → `AirspacePack`
+- [x] Importer: OurAirports (airports + both runway directions, displaced thresholds, filters)
+- [ ] Importers: FAA CIFP (ARINC 424), NASR → `AirspacePack`
 - [ ] Pack builder CLI `pnpm pack:build <id>` with AIRAC version, source/licence metadata
-- [ ] Pack validation: schema, geometry, ≤ 10 m position check, diff vs. previous AIRAC
+- [x] Pack validation: schema, publishable licences, unique ids, runway length/heading geometry, references, areas
+- [ ] Pack validation: ≤ 10 m check against a second source, diff vs. previous AIRAC
 - [ ] Pack hosting in Supabase Storage + manifest/hash download in the app
 - [ ] ⛔ D1b First pack for the chosen TMA
 - [ ] `ScopeView`: pan / zoom / range presets / north-up, float-jitter-safe rendering
