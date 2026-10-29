@@ -26,6 +26,8 @@ export interface MapArea {
   ceilingFt: number;
   /** Where to put the label: area centroid. */
   labelAt: LocalXY;
+  /** Areas carved out of this one (resolved from the pack's `exclude` ids). */
+  excluded?: MapArea[];
 }
 
 /** Area-weighted centroid of a simple polygon (vertex mean if degenerate). */
@@ -61,9 +63,10 @@ export function pointInPolygon(p: LocalXY, poly: readonly LocalXY[]): boolean {
   return inside;
 }
 
-/** Inside the volume: lateral polygon, floor inclusive, ceiling exclusive. */
+/** Inside the volume: lateral polygon, floor inclusive, ceiling exclusive, minus excluded areas. */
 export function inVolume(area: MapArea, xy: LocalXY, altFt: number): boolean {
-  return altFt >= area.floorFt && altFt < area.ceilingFt && pointInPolygon(xy, area.polygon);
+  if (altFt < area.floorFt || altFt >= area.ceilingFt || !pointInPolygon(xy, area.polygon)) return false;
+  return !(area.excluded ?? []).some((e) => inVolume(e, xy, altFt));
 }
 
 /** How far ahead "incoming" looks, s, and the sample step. */

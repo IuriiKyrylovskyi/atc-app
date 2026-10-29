@@ -35,7 +35,7 @@ pnpm install
 pnpm dev
 ```
 
-### Web only (Vite dev server on :5173)
+### Web only (Vite dev server on :5273)
 
 ```bash
 pnpm dev:app

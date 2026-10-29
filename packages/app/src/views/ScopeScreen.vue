@@ -12,10 +12,13 @@
  * incoming (entering within 5 min) or other. Clicking a track symbol shows its
  * route with estimated times over each point.
  *
+ * The area dropdown (New York, Kyiv, Bangkok — config/areas.ts) switches the
+ * airspace pack; the sector dropdown lists that area's sectors.
+ *
  * `?scenario=<id>` picks a scenario (default: the first one for the pack),
  * `?scenario=none` shows the map only.
  */
-import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   courseTo,
@@ -49,7 +52,8 @@ import {
 } from '@atc-app/scope';
 import { buildScenario, findScenario, scenariosForPack } from '@atc-app/scenario';
 import { instruction, parseCommand, radioCallsign, readback, unable, type CommandContext } from '@atc-app/voice';
-import { loadPack } from '@/services/packLoader';
+import { loadPack, loadPackManifest } from '@/services/packLoader';
+import { AREAS } from '@/config/areas';
 import { SIM_RATES, SimSession, type SimRate } from '@/services/simSession';
 
 const route = useRoute();
@@ -597,15 +601,25 @@ function blink(): void {
   }
 }
 
-onMounted(async () => {
-  ctx = canvas.value?.getContext('2d') ?? null;
-  if (ctx) renderer = new ScopeRenderer(ctx);
-  resizeObserver = new ResizeObserver(fitCanvas);
-  if (host.value) resizeObserver.observe(host.value);
-  window.addEventListener('keydown', onKey);
-  blinkTimer = setInterval(blink, 500);
+// ── Areas ──────────────────────────────────────────────────────────────────
+const areaOptions = ref<{ packId: string; name: string; note: string; available: boolean }[]>(
+  AREAS.map((a) => ({ ...a, available: true }))
+);
+
+function changeArea(packId: string): void {
+  if (packId !== route.params.packId) void router.push({ name: 'Scope', params: { packId } });
+}
+
+/** Loads an area's pack (and its traffic), replacing whatever was on the scope. */
+async function loadArea(packId: string): Promise<void> {
+  stopTraffic();
+  map.value = null;
+  loadedPack = null;
+  error.value = null;
+  loading.value = true;
+  view.centre = { x: 0, y: 0 };
   try {
-    const { pack } = await loadPack(String(route.params.packId));
+    const { pack } = await loadPack(packId);
     loadedPack = pack;
     scenarioOptions.value = scenariosForPack(pack.meta.id).map((s) => ({ id: s.id, name: s.name }));
     const m = buildVideoMap(pack);
@@ -623,6 +637,32 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+  requestDraw();
+}
+
+watch(
+  () => route.params.packId,
+  (id) => {
+    if (typeof id === 'string' && id) void loadArea(id);
+  }
+);
+
+onMounted(async () => {
+  ctx = canvas.value?.getContext('2d') ?? null;
+  if (ctx) renderer = new ScopeRenderer(ctx);
+  resizeObserver = new ResizeObserver(fitCanvas);
+  if (host.value) resizeObserver.observe(host.value);
+  window.addEventListener('keydown', onKey);
+  blinkTimer = setInterval(blink, 500);
+  loadPackManifest()
+    .then((packs) => {
+      areaOptions.value = AREAS.map((a) => {
+        const entry = packs[a.packId];
+        return { ...a, available: Boolean(entry && (!entry.devOnly || import.meta.env.DEV)) };
+      });
+    })
+    .catch(() => undefined);
+  await loadArea(String(route.params.packId));
 });
 
 onBeforeUnmount(() => {
@@ -650,9 +690,23 @@ onBeforeUnmount(() => {
 
     <div class="panel top-left">
       <button class="btn" @click="router.push({ name: 'home' })">HOME</button>
-      <span v-if="map" class="title">
-        {{ map.name }} · AIRAC {{ map.airac }}
-      </span>
+      <select class="btn area" :value="String(route.params.packId)" title="Area" @change="changeArea(($event.target as HTMLSelectElement).value)">
+        <option v-for="a in areaOptions" :key="a.packId" :value="a.packId" :disabled="!a.available" :title="a.note">
+          {{ a.name }}{{ a.available ? '' : ' (not built)' }}
+        </option>
+      </select>
+      <select
+        v-if="sectorOptions.length"
+        class="btn sector"
+        :value="activeSector"
+        title="Sector"
+        @change="setActiveSector(($event.target as HTMLSelectElement).value)"
+      >
+        <option value="">All sectors</option>
+        <option v-for="s in sectorOptions" :key="s.id" :value="s.id">{{ s.label }}</option>
+      </select>
+      <span v-else-if="map" class="title dim-title">no sectors defined</span>
+      <span v-if="map" class="title">AIRAC {{ map.airac }}</span>
       <select
         v-if="map && scenarioOptions.length"
         class="btn scenario"
@@ -665,16 +719,6 @@ onBeforeUnmount(() => {
       </select>
       <select class="btn" :value="systemId" title="ATC system" @change="setSystem(($event.target as HTMLSelectElement).value)">
         <option v-for="s in SCOPE_SYSTEMS" :key="s.id" :value="s.id" :title="s.description">{{ s.name }}</option>
-      </select>
-      <select
-        v-if="sectorOptions.length"
-        class="btn sector"
-        :value="activeSector"
-        title="Active sector"
-        @change="setActiveSector(($event.target as HTMLSelectElement).value)"
-      >
-        <option value="">All sectors</option>
-        <option v-for="s in sectorOptions" :key="s.id" :value="s.id">{{ s.label }}</option>
       </select>
     </div>
 
@@ -887,6 +931,12 @@ onBeforeUnmount(() => {
 }
 .scenario {
   max-width: 220px;
+}
+.sector {
+  max-width: 260px;
+}
+.dim-title {
+  color: #5f8396;
 }
 .log-line.unable,
 .log-line.error {

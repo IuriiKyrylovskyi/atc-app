@@ -38,11 +38,23 @@ So the sector polygons (and FIR / route geometry) can be extracted layer by
 layer and converted to lat/lon through the viewport transform — useful to
 validate an AIP-based importer or for a local prototype, not for distribution.
 
+## Ukraine
+
+`UKKT_AIP.pdf` — Ukrainian AIP AD 2 for UKKT Kyiv/Antonov-1 (23 pages: ARP
+502844N 0302303E, runway, obstacles, …). UkSATSE material, all rights
+reserved — reference only.
+
 ## FAA IFR Enroute charts (North America)
 
 Source: https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/ifr/
 — US Government work, **public domain**: free to display, georeference and
-trace. Nothing downloaded yet; put files here when needed.
+trace.
+
+Downloaded: `enr_l01.zip`, `enr_l02/` (L-02: California / Oregon), `enr_h01/` (H-01
+GeoTIFF), `dehus1/` (H-01, H-02 PDFs), `dehus9/` (**H-09** ≈ 28–38°N, south-east US;
+**H-10** ≈ 34–44.7°N, **covers New York**). The H PDFs are ArcGIS GeoPDFs with
+layers (ATSRoute, DesignatedPoint, NavaidSystem, HoldingPattern, AirspaceLine
+incl. ARTCC / SUA / FIR, Service = comm outlets).
 
 | Series | Charts | Files (edition folder `MM-DD-YYYY`) |
 |---|---|---|

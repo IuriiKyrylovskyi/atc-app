@@ -2,10 +2,11 @@
  * pnpm pack:build [<id> …] [--all] [--out <dir>] [--cifp <file>] [--ourairports <dir>] [--flag-above <m>]
  *
  * Builds the packs defined in packs/<id>.pack.json from the downloaded sources in
- * db/ (pnpm data:cifp, pnpm data:ourairports), validates them, writes
+ * db/ (pnpm data:cifp, pnpm data:ourairports, pnpm data:eaip <state>), validates them, writes
  * packs/dist/<id>@<airac>.json + manifest.json, and reports the runway
  * cross-check and the diff against the previous AIRAC build. Exits 1 if any pack
- * fails validation (that pack is not written).
+ * fails validation (that pack is not written). Packs built from state AIP data
+ * are flagged `devOnly` in the manifest (development builds only).
  */
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
@@ -13,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AirspacePack } from '@atc-app/sim';
 import { readCifpRecords } from '../importers/cifp';
-import { buildPack, type BuildResult } from '../build/build-pack';
+import { buildOpenPack, buildPack, type BuildResult, type OpenBuildInputs } from '../build/build-pack';
 import { parsePackDefinition, type PackDefinition } from '../build/definition';
 import { diffPacks, summarizeDiff } from '../build/diff';
 
@@ -71,6 +72,36 @@ function loadDefinitions(args: Args): PackDefinition[] {
   });
 }
 
+/** Latest downloaded eAIP edition of a state (db/eaip-<state>/<edition>/). */
+function loadEaip(state: string): (NonNullable<OpenBuildInputs['eaip']> & { retrieved: string }) {
+  const dir = path.join(ROOT, 'db', `eaip-${state}`);
+  const editions = existsSync(dir) ? readdirSync(dir).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort() : [];
+  const edition = editions.pop();
+  if (!edition) throw new Error(`no eAIP for "${state}" — run pnpm data:eaip ${state}`);
+  const base = path.join(dir, edition);
+  const page = (name: string) => {
+    const f = readdirSync(base).find((x) => x.includes(`-${name}-`));
+    return f ? readFileSync(path.join(base, f), 'utf8') : undefined;
+  };
+  const need = (name: string) => {
+    const p = page(name);
+    if (!p) throw new Error(`eAIP ${state} ${edition}: ${name} missing`);
+    return p;
+  };
+  const info = existsSync(path.join(base, 'EDITION')) ? readFileSync(path.join(base, 'EDITION'), 'utf8').split('\n') : [];
+  const enr33 = page('ENR-3.3');
+  return {
+    edition,
+    stateName: info[1] ?? state.toUpperCase(),
+    url: 'https://aip.caat.or.th/',
+    enr31: need('ENR-3.1'),
+    ...(enr33 ? { enr33 } : {}),
+    enr41: need('ENR-4.1'),
+    enr44: need('ENR-4.4'),
+    retrieved: (info[2] ?? '').replace('retrieved ', '').trim() || edition,
+  };
+}
+
 function previousBuild(out: string, id: string, airac: string): AirspacePack | null {
   if (!existsSync(out)) return null;
   const prev = readdirSync(out)
@@ -111,22 +142,25 @@ function report(def: PackDefinition, r: BuildResult): void {
 function main(): void {
   const args = parseArgs(process.argv.slice(2));
   const defs = loadDefinitions(args);
-  if (!existsSync(args.cifp)) throw new Error(`${path.relative(ROOT, args.cifp)} missing — run pnpm data:cifp`);
 
   const t0 = Date.now();
-  const cifp = readCifpRecords(readFileSync(args.cifp, 'latin1'));
+  const needCifp = defs.some((d) => d.source === 'cifp');
+  if (needCifp && !existsSync(args.cifp)) throw new Error(`${path.relative(ROOT, args.cifp)} missing — run pnpm data:cifp`);
+  const cifp = needCifp ? readCifpRecords(readFileSync(args.cifp, 'latin1')) : null;
   const haveOa = existsSync(path.join(args.ourairports, 'airports.csv'));
+  const navaidsCsv = path.join(args.ourairports, 'navaids.csv');
   const ourAirports = haveOa
     ? {
         airportsCsv: readFileSync(path.join(args.ourairports, 'airports.csv'), 'utf8'),
         runwaysCsv: readFileSync(path.join(args.ourairports, 'runways.csv'), 'utf8'),
+        ...(existsSync(navaidsCsv) ? { navaidsCsv: readFileSync(navaidsCsv, 'utf8') } : {}),
         retrieved: existsSync(path.join(args.ourairports, 'RETRIEVED'))
           ? readFileSync(path.join(args.ourairports, 'RETRIEVED'), 'utf8').trim()
           : isoDate(path.join(args.ourairports, 'airports.csv')),
       }
     : undefined;
   console.log(
-    `Sources: CIFP AIRAC ${cifp.airac ?? '?'} (${(Date.now() - t0) / 1000}s)` +
+    `Sources: ${cifp ? `CIFP AIRAC ${cifp.airac ?? '?'} (${(Date.now() - t0) / 1000}s)` : 'no CIFP pack requested'}` +
       (haveOa ? `, OurAirports ${ourAirports!.retrieved}` : ', OurAirports not downloaded (pnpm data:ourairports)')
   );
 
@@ -138,7 +172,15 @@ function main(): void {
 
   let failed = 0;
   for (const def of defs) {
-    const r = buildPack(def, { cifp, ourAirports, retrieved: isoDate(args.cifp) }, { flagAboveM: args.flagAboveM });
+    let r: BuildResult;
+    if (def.source === 'open') {
+      if (!ourAirports) throw new Error(`${def.id}: needs OurAirports (pnpm data:ourairports)`);
+      const eaip = def.eaip ? loadEaip(def.eaip) : undefined;
+      r = buildOpenPack(def, { ourAirports, ...(eaip ? { eaip } : {}), retrieved: eaip?.retrieved ?? ourAirports.retrieved });
+    } else {
+      if (!existsSync(args.cifp)) throw new Error(`${path.relative(ROOT, args.cifp)} missing — run pnpm data:cifp`);
+      r = buildPack(def, { cifp: cifp!, ourAirports, retrieved: isoDate(args.cifp) }, { flagAboveM: args.flagAboveM });
+    }
     report(def, r);
     if (!r.validation.ok) {
       failed++;
@@ -177,6 +219,7 @@ function main(): void {
         flagged: r.crossCheck.flagged.length,
       },
       ...(diff ? { diffFrom: diff.fromAirac } : {}),
+      ...(r.devOnly ? { devOnly: true } : {}),
       builtAt: new Date().toISOString(),
     };
     console.log(`  ✓ ${path.relative(ROOT, path.join(args.out, file))} (${(Buffer.byteLength(body) / 1024).toFixed(0)} KB)`);

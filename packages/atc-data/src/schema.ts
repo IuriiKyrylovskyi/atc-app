@@ -156,6 +156,7 @@ export const areaSchema = z
     kind: z.enum(['CTR', 'TMA', 'sector', 'restricted', 'danger', 'prohibited', 'TRA', 'TSA']),
     name: z.string().min(1).optional(),
     polygon,
+    exclude: z.array(z.string()).optional(),
     floorFt: z.number(),
     ceilingFt: z.number(),
   })

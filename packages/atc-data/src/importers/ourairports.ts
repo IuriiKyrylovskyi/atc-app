@@ -12,7 +12,7 @@
  *   Price: Navigraph via each user's own subscription (≈ €10/month); Jeppesen
  *   enterprise licence, quote only.
  */
-import { courseTo, destination, normDeg, M_PER_FT, type Airport, type PackSource, type Runway } from '@atc-app/sim';
+import { angleDiffDeg, courseTo, destination, normDeg, M_PER_FT, type Airport, type Fix, type PackSource, type Runway } from '@atc-app/sim';
 import { parseCsvRecords } from '../csv';
 
 export const OURAIRPORTS_SOURCE_URL = 'https://ourairports.com/data/';
@@ -141,7 +141,10 @@ export function importOurAirports(input: OurAirportsInput, filter: OurAirportsFi
       const id = (r[`${d.prefix}_ident`] ?? '').trim().toUpperCase();
       if (!id) continue;
       const course = courseTo(d.from, d.to);
-      const publishedHeading = num(r[`${d.prefix}_heading_degT`]);
+      // The heading column is often rounded or magnetic; trust it only when it
+      // agrees with the surveyed ends (VTBD 03L/21R were off by ~2°).
+      const listed = num(r[`${d.prefix}_heading_degT`]);
+      const publishedHeading = listed !== null && Math.abs(angleDiffDeg(listed, course)) <= 1 ? listed : null;
       const displacedFt = num(r[`${d.prefix}_displaced_threshold_ft`]) ?? 0;
       const displacedM = displacedFt * M_PER_FT;
       runways.push({
@@ -170,4 +173,40 @@ export function importOurAirports(input: OurAirportsInput, filter: OurAirportsFi
       retrieved: input.retrieved,
     },
   };
+}
+
+// ── Navaids (navaids.csv) ─────────────────────────────────────────────────────
+
+/** OurAirports navaid type → pack fix kind (TACAN-only and others are skipped). */
+const NAVAID_KIND: Record<string, Fix['kind']> = {
+  VOR: 'vor',
+  'VOR-DME': 'vor',
+  VORTAC: 'vor',
+  DME: 'dme',
+  NDB: 'ndb',
+  'NDB-DME': 'ndb',
+};
+
+/**
+ * Navaids inside a box from OurAirports navaids.csv (public domain). Used for
+ * areas without an ARINC 424 / eAIP source; AIP data wins where both exist.
+ */
+export function importOurAirportsNavaids(
+  navaidsCsv: string,
+  bbox: { minLat: number; maxLat: number; minLon: number; maxLon: number }
+): Fix[] {
+  const out: Fix[] = [];
+  const seen = new Set<string>();
+  for (const r of parseCsvRecords(navaidsCsv)) {
+    const kind = NAVAID_KIND[(r.type ?? '').trim().toUpperCase()];
+    const lat = num(r.latitude_deg);
+    const lon = num(r.longitude_deg);
+    const id = (r.ident ?? '').trim().toUpperCase();
+    if (!kind || lat === null || lon === null || !id) continue;
+    if (lat < bbox.minLat || lat > bbox.maxLat || lon < bbox.minLon || lon > bbox.maxLon) continue;
+    if (seen.has(id)) continue; // co-located VOR + DME rows share an ident
+    seen.add(id);
+    out.push({ id, kind, pos: { lat, lon } });
+  }
+  return out;
 }

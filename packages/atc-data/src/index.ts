@@ -37,3 +37,4 @@ export * from './importers/cifp';
 export * from './build/definition';
 export * from './build/build-pack';
 export * from './build/diff';
+export * from './importers/eaip';
