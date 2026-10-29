@@ -288,9 +288,16 @@ export class ScopeRenderer {
       ctx.beginPath();
       for (const f of waypoints) {
         const s = S(f.xy);
-        ctx.moveTo(s.x, s.y - 3.5);
-        ctx.lineTo(s.x + 3.5, s.y + 2.5);
-        ctx.lineTo(s.x - 3.5, s.y + 2.5);
+        if (P.waypointShape === 'diamond') {
+          ctx.moveTo(s.x, s.y - 3);
+          ctx.lineTo(s.x + 3, s.y);
+          ctx.lineTo(s.x, s.y + 3);
+          ctx.lineTo(s.x - 3, s.y);
+        } else {
+          ctx.moveTo(s.x, s.y - 3.5);
+          ctx.lineTo(s.x + 3.5, s.y + 2.5);
+          ctx.lineTo(s.x - 3.5, s.y + 2.5);
+        }
         ctx.closePath();
         stats.fixes++;
       }
@@ -603,6 +610,14 @@ export class ScopeRenderer {
       ctx.fill();
     } else if (kind === 'square') {
       ctx.fillRect(s.x - r, s.y - r, r * 2, r * 2);
+    } else if (kind === 'ring') {
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r + 0.5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 1.2, 0, Math.PI * 2);
+      ctx.fill();
     } else {
       ctx.lineWidth = 1.5;
       ctx.beginPath();

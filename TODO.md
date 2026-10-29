@@ -71,11 +71,13 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [x] Scope static layers (Canvas 2D): airways, fixes, navaids, airports, runways, ILS extended centrelines with 1 NM ticks, declutter by range, non-overlapping labels
 - [ ] Scope layers: SID/STAR/approach paths, MVA
 - [x] ATC system profiles: Generic, Selex (Alenia) from a reference photo, Indra (approximation) — palette, sector/area styling, track symbol, ownership colours, normal + selected label layouts; system dropdown (remembered)
-- [ ] Calibrate the Indra profile from a reference photo; add Thales TopSky
+- [x] Indra profile calibrated from a reference screenshot (navy map, teal boundary, diamond fixes, green own `NEXT / CS GS / AFL CFL`, white others)
+- [ ] Thales TopSky profile; Selex / Indra: blinking, coordination flags (e.g. Indra "MC"), label line toggles
 - [x] Control sectors in packs (`sectors` in pack definitions: polygon of fixes/points or wedge, floor/ceiling) → `areas` kind sector; NY: synthetic EWR / LGA / KEN SFC–170 + HIGH 170–330
 - [x] Active sector dropdown: sector fill + border, labels with vertical limits, traffic coloured owned / incoming (5 min look-ahead) / other, OWN / INC counts
 - [x] Speed vector with one dash per minute; click a track symbol: route with ETOs over each point
 - [ ] Real sector data (ANSP sectorisation), FIR / neighbour boundaries, handoffs and track assumption
+- [ ] ⛔ Decide official sector source: AIP ENR 2.1 importer (e.g. Thailand Bangkok ACC, 12 sectors, public eAIP) and/or the chosen TMA's AIP; needs FIR boundary following, DME arcs, multi-volume sectors, AIP copyright check
 - [ ] Airspace areas from CIFP (UC / UR) on the scope (renderer styling is ready)
 - [x] Traffic on scope: sim in a Web Worker, one advance per radar sweep (4.8 s, ASR-9), pause / ×1 ×2 ×4 ×8
 - [x] Targets: symbol, history dots, speed vector (0/1/2/4 min), leader line, click to select + info panel

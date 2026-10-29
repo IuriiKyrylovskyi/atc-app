@@ -366,7 +366,12 @@ describe('ATC systems, sectors, ownership, routes', () => {
     expect(selexSelectedLabel(a, { ownership: 'owned', sector: 'TC2', nextFix: 'LIDNO' })).toEqual([
       'TST1 M TC2', '341↓ 220 KJFK', 'G449 250 LIDNO', 'A320 2101',
     ]);
-    expect(INDRA_SYSTEM.traffic.label(a, { ownership: 'owned' })).toEqual(['TST1', '341↓220', 'A320 449']);
+    // Indra: own traffic gets the next point on top, others two lines.
+    expect(INDRA_SYSTEM.traffic.label(a, { ownership: 'owned', nextFix: 'DODE' })).toEqual(['DODE', 'TST1 449', '341↓ 220']);
+    expect(INDRA_SYSTEM.traffic.label(a, { ownership: 'other', nextFix: 'DODE' })).toEqual(['TST1 449', '341↓ 220']);
+    expect(INDRA_SYSTEM.traffic.selectedLabel(a, { ownership: 'owned', sector: 'KEN', nextFix: 'DODE' })).toEqual([
+      'DODE', 'TST1 449 A320/M', '341↓ 220 KJFK', '250 KEN',
+    ]);
     expect(GENERIC_SYSTEM.traffic.label(a, { ownership: 'owned' })[1]).toBe('341↓220 45');
     expect(findSystem('selex')).toBe(SELEX_SYSTEM);
     expect(findSystem('nope')).toBe(GENERIC_SYSTEM);

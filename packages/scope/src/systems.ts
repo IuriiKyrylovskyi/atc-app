@@ -10,10 +10,11 @@
  *   airspace on lighter grey, dark airways and filled fix triangles, white
  *   sector borders, white "+" tracks, white labels for own traffic, cyan for
  *   incoming, the selected label in a black box with extended fields.
- * - `indra`: approximation of an Indra (SACTA / iTEC / AirCon 2100) display:
- *   dark blue-grey map, square tracks, white own / yellow incoming labels.
- *   Not yet calibrated against a reference image — colours and fields are
- *   placeholders to be tuned from a photo of the real system.
+ * - `indra`: modelled on an Indra (iTEC / SACTA) display (reference
+ *   screenshot): navy own airspace on slate grey, teal unit boundary, dark-red
+ *   sector lines, light-grey range arcs, small light-grey diamond fixes, bold
+ *   monospace labels — green for own traffic with the exit / next point on top
+ *   (`DODE` / `KLM733 440` / `270 270`), white two-line labels for others.
  *
  * Labels are built from the same aircraft data; only the layout differs.
  */
@@ -52,8 +53,9 @@ export interface MapStyle {
   ringLabel: string;
   airway: string;
   waypoint: string;
-  /** Filled triangles (Selex) or outlines. */
+  /** Filled (Selex, Indra) or outline symbols. */
   waypointFilled: boolean;
+  waypointShape: 'triangle' | 'diamond';
   waypointLabel: string;
   navaid: string;
   navaidLabel: string;
@@ -64,7 +66,7 @@ export interface MapStyle {
 }
 
 export interface TrafficStyle {
-  symbol: 'dot' | 'cross' | 'square';
+  symbol: 'dot' | 'cross' | 'square' | 'ring';
   owned: string;
   incoming: string;
   other: string;
@@ -125,17 +127,22 @@ export function selexSelectedLabel(ac: AircraftState, ctx: LabelContext): string
   ];
 }
 
-/** Indra (approximation): `IBE3456` / `350↓220` / `A320 449`. */
-export function indraLabel(ac: AircraftState): string[] {
-  return [ac.callsign, `${fl3(ac.altFt)}${trendOf(ac).trim()}${fl3(ac.target.altFt)}`, `${ac.icaoType} ${gs3(ac)}`];
+/**
+ * Indra label. Own traffic: `DODE` (next point) / `KLM733 440` (callsign, ground
+ * speed) / `270 270` (actual and cleared level). Others: the last two lines only.
+ */
+export function indraLabel(ac: AircraftState, ctx: LabelContext): string[] {
+  const lines = [`${ac.callsign} ${gs3(ac)}`, `${fl3(ac.altFt)}${trendOf(ac).trim()} ${fl3(ac.target.altFt)}`];
+  return ctx.ownership === 'owned' && ctx.nextFix ? [ctx.nextFix, ...lines] : lines;
 }
 
+/** Indra selected label: adds type / wake, destination, speed and sector. */
 export function indraSelectedLabel(ac: AircraftState, ctx: LabelContext): string[] {
   return [
-    [ac.callsign, ctx.sector].filter(Boolean).join(' '),
-    `${fl3(ac.altFt)}${trendOf(ac).trim()}${fl3(ac.target.altFt)} ${Math.round(ac.casKt)}`,
-    [ac.icaoType, ac.wake, gs3(ac)].join(' '),
-    [ac.destination, ctx.nextFix].filter(Boolean).join(' '),
+    ...(ctx.nextFix ? [ctx.nextFix] : []),
+    `${ac.callsign} ${gs3(ac)} ${ac.icaoType}/${ac.wake}`,
+    [`${fl3(ac.altFt)}${trendOf(ac).trim()}`, fl3(ac.target.altFt), ac.destination].filter(Boolean).join(' '),
+    [String(Math.round(ac.casKt)), ctx.sector].filter(Boolean).join(' '),
   ];
 }
 
@@ -163,6 +170,7 @@ export const GENERIC_SYSTEM: ScopeSystem = {
     airway: '#21404f',
     waypoint: '#4f7386',
     waypointFilled: false,
+    waypointShape: 'triangle',
     waypointLabel: '#5f8396',
     navaid: '#7fa3b5',
     navaidLabel: '#8fb0c0',
@@ -208,6 +216,7 @@ export const SELEX_SYSTEM: ScopeSystem = {
     airway: '#3b3f42',
     waypoint: '#1b1d1f',
     waypointFilled: true,
+    waypointShape: 'triangle',
     waypointLabel: '#2a2d30',
     navaid: '#1f2224',
     navaidLabel: '#1b1d1f',
@@ -232,44 +241,45 @@ export const SELEX_SYSTEM: ScopeSystem = {
 
 export const INDRA_SYSTEM: ScopeSystem = {
   id: 'indra',
-  name: 'Indra (approx.)',
-  description: 'Indra SACTA / iTEC style approximation: dark blue-grey map, square tracks — to be calibrated from a reference photo',
-  font: '12px "DejaVu Sans Mono", Menlo, Consolas, monospace',
+  name: 'Indra',
+  description: 'Indra iTEC / SACTA style: navy map, teal unit boundary, green own traffic with next point, white others',
+  font: 'bold 12px "DejaVu Sans Mono", Menlo, Consolas, monospace',
   map: {
-    background: '#10161d',
-    airspace: '#18222b',
-    activeSector: '#203040',
-    sectorBorder: '#3e5668',
+    background: '#2c333d',
+    airspace: '#0b0f2c',
+    activeSector: '#121a46',
+    sectorBorder: '#6a1f31',
     sectorBorderWidth: 1,
-    activeSectorBorder: '#a8cfe6',
+    activeSectorBorder: '#2fb6c0',
     activeSectorBorderWidth: 2,
-    sectorLabel: '#7d97aa',
-    terminalFill: 'rgba(70, 120, 160, 0.22)',
-    terminalBorder: '#4f84ad',
-    restrictedFill: 'rgba(180, 90, 40, 0.20)',
-    restrictedBorder: '#c07a3a',
-    ring: '#22303c',
-    ringLabel: '#4a6274',
-    airway: '#2c3c4a',
-    waypoint: '#6f8797',
-    waypointFilled: false,
-    waypointLabel: '#6f8797',
-    navaid: '#93aab9',
-    navaidLabel: '#93aab9',
-    runway: '#e2e8ec',
-    centreline: '#3e5668',
-    airportLabel: '#b9c7d0',
-    scaleBar: '#6f8797',
+    sectorLabel: '#8a93ad',
+    terminalFill: 'rgba(40, 140, 155, 0.14)',
+    terminalBorder: '#2a9ca8',
+    restrictedFill: 'rgba(120, 30, 48, 0.22)',
+    restrictedBorder: '#8a2638',
+    ring: '#6c7593',
+    ringLabel: '#8a93ad',
+    airway: '#59648a',
+    waypoint: '#c6cad6',
+    waypointFilled: true,
+    waypointShape: 'diamond',
+    waypointLabel: '#b6bbca',
+    navaid: '#c6cad6',
+    navaidLabel: '#b6bbca',
+    runway: '#e6e8ee',
+    centreline: '#59648a',
+    airportLabel: '#d0d4de',
+    scaleBar: '#8a93ad',
   },
   traffic: {
-    symbol: 'square',
-    owned: '#ffffff',
-    incoming: '#e9d36c',
-    other: '#7d8b96',
-    selected: '#e9d36c',
-    selectedBox: { background: 'rgba(16, 22, 29, 0.92)', border: '#e9d36c', text: '#ffffff' },
+    symbol: 'ring',
+    owned: '#5cd65a',
+    incoming: '#f2c14e',
+    other: '#e6e8ee',
+    selected: '#5cd65a',
+    selectedBox: { background: 'rgba(11, 15, 44, 0.94)', border: '#5cd65a', text: '#ffffff' },
     alert: '#ff4d3d',
-    history: ['#c9d3da', '#b0bcc5', '#98a6b1', '#82919d', '#6d7d8a', '#5b6a77', '#4b5965', '#3e4a55'],
+    history: ['#c6cad6', '#adb2c2', '#959baf', '#7f869c', '#6b738a', '#5a6178', '#4b5167', '#3e4357'],
     label: indraLabel,
     selectedLabel: indraSelectedLabel,
   },

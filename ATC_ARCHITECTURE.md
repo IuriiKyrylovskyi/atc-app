@@ -368,15 +368,23 @@ access terms to confirm).
   system they train on — *Generic* (our default, STARS-like data block), *Selex (Alenia)*
   (modelled on a Selex ES / Leonardo en-route display in service in Ukraine: grey map, white
   "+" tracks, `CALLSIGN / AFL CFL / G<gs>` labels, cyan incoming, boxed extended label of the
-  selected track) and *Indra* (approximation of SACTA / iTEC, to be calibrated from a reference
-  photo). A profile is data only: map palette, sector / area styling, track symbol, ownership
+  selected track) and *Indra* (modelled on an iTEC / SACTA screenshot: navy map on slate, teal
+  unit boundary, diamond fixes, green own traffic `NEXT / CALLSIGN GS / AFL CFL`, white two-line
+  others). A profile is data only: map palette, sector / area styling, track symbol, ownership
   colours and label layouts — adding a system (Thales TopSky, Frequentis…) is one object.
 - **Sectors and ownership:** packs carry control sectors (lateral polygon + floor / ceiling);
   the controller selects the active sector, which is filled and outlined, and traffic is
   coloured *owned* (inside its volume), *incoming* (predicted to enter within 5 min, cleared
   level respected) or *other*. Ownership is geometric until handoffs / track assumption arrive
-  with multi-sector sessions (Phase 3). Public sector boundaries are rare (FAA TRACON sectors
-  are internal), so pack definitions author them; the NY pack ships synthetic wedges.
+  with multi-sector sessions (Phase 3). The NY pack ships synthetic wedges.
+- **Official sector boundaries:** where a state publishes them, ACC sectors are in **AIP ENR 2.1**
+  (ATS airspace): name, lateral limits (coordinate chain, DME arcs, "along FIR boundary"),
+  vertical limits, unit, call sign, frequencies — e.g. Thailand lists all 12 Bangkok ACC sectors
+  (1N–6N, 1S–6S), including multi-volume sectors (6S = GND–FL460 area + GND–FL270 area). Many
+  states (incl. the USA for TRACON / ARTCC sectors) do not publish sectors; the FAA publishes
+  ARTCC boundaries (NASR) only. Importer needs: coordinate / arc / FIR-boundary-following
+  parser, FIR boundaries from the same ENR 2.1, sectors as several volumes, and the state's AIP
+  copyright terms checked before shipping (AIP text is state copyright, not open data).
 - **Track tools:** speed vectors are drawn one dash per minute; clicking a track symbol shows
   its remaining route (direct fix, route fixes, runway when cleared for an approach) with ETOs
   at the current ground speed.
