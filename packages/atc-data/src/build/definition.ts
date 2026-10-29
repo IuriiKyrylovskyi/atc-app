@@ -62,6 +62,14 @@ export const sectorDefinitionSchema = z
       .strict()
       .optional(),
     boundary: z.array(boundaryStepSchema).min(3).optional(),
+    /** The whole FIR / ARTCC border from the boundary source ("KZNY"). */
+    border: z.string().optional(),
+    /**
+     * Union of airspace areas of the pack (CIFP Class B sub-areas, …): the first
+     * is the main volume, the rest parts; every volume clipped to the sector's
+     * floor / ceiling.
+     */
+    areas: z.array(z.string()).min(1).optional(),
     /** Other sectors carved out of this one ("excluding ARR sector, DSB sector"). */
     exclude: z.array(z.string()).optional(),
     /** Further volumes of the same sector ("and an area bounded by …"). */
@@ -70,7 +78,10 @@ export const sectorDefinitionSchema = z
       .optional(),
   })
   .strict()
-  .refine((s) => (s.polygon ? 1 : 0) + (s.wedge ? 1 : 0) + (s.boundary ? 1 : 0) === 1, 'give one of polygon, wedge, boundary')
+  .refine(
+    (s) => [s.polygon, s.wedge, s.boundary, s.border, s.areas].filter((x) => x !== undefined).length === 1,
+    'give one of polygon, wedge, boundary, border, areas'
+  )
   .refine((s) => s.floorFt < s.ceilingFt, 'floor must be below ceiling');
 
 export type SectorDefinition = z.infer<typeof sectorDefinitionSchema>;
@@ -116,6 +127,18 @@ export const packDefinitionSchema = z
     sectorsUrl: z.string().optional(),
     /** Where FIR borders for `along` boundary steps come from (db/vatspy, pnpm data:vatspy). */
     boundaries: z.literal('vatspy').optional(),
+    /** CIFP controlled / restrictive airspace to import (`cifp` packs only). */
+    airspace: z
+      .object({
+        /** Airspace with a boundary point within this distance of the reference. */
+        radiusNm: z.number().positive().max(600),
+        /** Which kinds; default all. */
+        classes: z
+          .array(z.enum(['classB', 'classC', 'classD', 'restricted', 'prohibited', 'warning', 'alert', 'moa', 'other']))
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

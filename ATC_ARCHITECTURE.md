@@ -191,7 +191,7 @@ source of truth for coordinates.
 
 | Source | Content | Cost | Licence / use in a paid game |
 |---|---|---|---|
-| **FAA CIFP** (ARINC 424) + **NASR** | All US procedures, fixes, airways, airspace, runways | Free | US Government work, public domain — OK |
+| **FAA CIFP** (ARINC 424) + **NASR** | All US procedures, fixes, airways, airspace, runways. Imported from CIFP: airports, runways, ILS, fixes, navaids, airways, procedures, UC (Class B / C / D) and UR (restricted, prohibited, warning, alert, MOA, SFRA) airspace. No ARTCC boundaries in CIFP (NASR only) | Free | US Government work, public domain — OK |
 | **FAA d-TPP** (chart PDFs) | US approach/SID/STAR plates | Free | Public domain — OK to display |
 | **FAA IFR Enroute charts** (Aeronautical Information Services, digital products) | IFR Enroute **Low** (L-01…L-36) / **High** (H-01…H-12) US, Alaska low/high, **Area** charts, Hawaii/Pacific, oceanic route charts (NARC, PORC, WATRS), Caribbean low/high, planning chart; each as **PDF** and **GeoTIFF** (zip) | Free | US Government work, public domain — OK to display, georeference and trace (validation of CIFP/NASR geometry, background layers). 56-day cycle; next edition online 19 days before effective date. Some products end from May 2026 (VIS 26-02 charting notice) — check before relying on one |
 | **FAA IFR Enroute High** H-09 / H-10 (`charts/dehus9/`) | ArcGIS GeoPDFs (1575 × 559 mm, georeferenced, Lambert "IFR_US_High", NAD83) with separate layers: ATS routes, designated points, navaids, holding, airspace lines (ARTCC, SUA, FIR/UIR), comm outlets. H-09 ≈ 28–38°N (south-east US); **H-10 ≈ 34–44.7°N incl. New York** | Free | Public domain. Visual reference for the NY pack (geometry itself comes from CIFP / NASR) |
