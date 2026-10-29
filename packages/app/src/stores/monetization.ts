@@ -109,6 +109,8 @@ export const useMonetizationStore = defineStore('monetization', () => {
   const platform = ref<Profile['platform']>('web');
   const isLoading = ref(false);
   const isInitialized = ref(false);
+  // Initialised without an account server (see init): free, local progress only.
+  const isOffline = ref(false);
   const purchaseError = ref<string | null>(null);
   // Public 8-char handle shown on the leaderboard (anyone can see it).
   // Owned by the canonical `accounts` row, not the device profile.
@@ -1387,7 +1389,20 @@ export const useMonetizationStore = defineStore('monetization', () => {
 
     try {
       platform.value = getPlatform();
-      const uid = await ensureAuth();
+      let uid: string;
+      try {
+        uid = await Promise.race([ensureAuth(), timeout<string>(8000)]);
+      } catch (err) {
+        // No account server (mocked .env values, offline, Supabase down): play
+        // as a free player on local progress instead of holding every route on
+        // the splash. Server steps are skipped; a later launch signs in.
+        console.warn('⚠️ No account server — launching offline with local progress:', err);
+        loadLocalPassedLevels();
+        isOffline.value = true;
+        isInitialized.value = true;
+        return;
+      }
+      isOffline.value = false;
 
       // Load the local passed-levels cache first so the UI has something to
       // show immediately and so a server value can merge into it (rather
@@ -1544,6 +1559,7 @@ export const useMonetizationStore = defineStore('monetization', () => {
     platform.value = 'web';
     isLoading.value = false;
     isInitialized.value = false;
+    isOffline.value = false;
     purchaseError.value = null;
     userAlias.value = null;
     userPassword.value = null;
@@ -1575,6 +1591,7 @@ export const useMonetizationStore = defineStore('monetization', () => {
     platform,
     isLoading,
     isInitialized,
+    isOffline,
     purchaseError,
     userAlias,
     userPassword,
