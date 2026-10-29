@@ -81,12 +81,14 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [x] Kyiv pack: OurAirports airports / runways / navaids only (no waypoints, routes, sectors yet)
 - [x] Bangkok ACC: all 12 sectors (1N–6N, 1S–6S); FIR-border stretches from VATSpy `VTBB` (`along` boundary steps), 2S split (FL270+) with 3S / 6S lower parts
 - [ ] Bangkok: north-flow sector variants, SIDs / STARs / ILS from AD 2
-- [ ] ⛔ Kyiv: waypoints, routes, TMA / ACC sectors — needs UkSATSE eAIP (ENR 2.1 / 3 / 4.4) or ARINC 424
+- [x] Kyiv from EUROCONTROL ERC-06 (GeoPDF, `pnpm data:erc`): designated points + routes within 200 NM, navaids matched to OurAirports, 17 Kyiv ACC ATFM sectors UKBV* with FL bands (upper / lower sheets, split FL275); devOnly (© EUROCONTROL)
+- [ ] ⛔ Kyiv: AIP-exact points / routes / sectors and TMA / approach sectors — needs UkSATSE eAIP (ENR 2.1 / 3 / 4.4) or ARINC 424; ERC ATFM sectors may predate 2022 and are less precise than ATC sector descriptions
 - [x] NY airspace from CIFP (UC / UR): Class B (16 sub-areas), Class C / D, restricted / prohibited / warning / alert / SFRA within 100 NM; sectors N90 (Class B volume as a stand-in) and ZNY (VATSpy KZNY domestic border, minus N90)
 - [ ] ⛔ NY: real N90 / ZNY sectorisation (not public); NASR ARTCC boundary to replace VATSpy KZNY
 - [ ] Real sector data (ANSP sectorisation), FIR / neighbour boundaries, handoffs and track assumption
 - [ ] ⛔ Decide official sector source: AIP ENR 2.1 importer (e.g. Thailand Bangkok ACC, 12 sectors, public eAIP) and/or the chosen TMA's AIP; needs FIR boundary following, DME arcs, multi-volume sectors, AIP copyright check
-- [ ] EUROCONTROL ERC GeoPDF extractor (dev / validation only): read the `ATFM Sector` / `FIR/UIR` layers of ERC-06 (`charts/`), convert through the GeoPDF viewport (EC Lambert Conformal Conic) to lat/lon, label sectors from `ATFM Sector Annotation`; compare with AIP data. Ask EUROCONTROL for written permission before any product use
+- [x] EUROCONTROL ERC GeoPDF extractor (dev only): pdf.js reads the ATFM Sector / Designated Point / Navaid System / ATS Route layers (+ annotations) of ERC sheets into `db/erc/`, GeoPDF viewport (EC Lambert Conformal Conic) → lat/lon; sectors labelled from `ATFM Sector Annotation` stacks
+- [ ] Ask EUROCONTROL for written permission before any product use of ERC geometry; FIR/UIR layer of the ERC as an alternative to VATSpy borders
 - [ ] Airspace areas from CIFP (UC / UR) on the scope (renderer styling is ready)
 - [x] Traffic on scope: sim in a Web Worker, one advance per radar sweep (4.8 s, ASR-9), pause / ×1 ×2 ×4 ×8
 - [x] Targets: symbol, history dots, speed vector (0/1/2/4 min), leader line, click to select + info panel

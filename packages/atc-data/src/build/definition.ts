@@ -127,6 +127,28 @@ export const packDefinitionSchema = z
     sectorsUrl: z.string().optional(),
     /** Where FIR borders for `along` boundary steps come from (db/vatspy, pnpm data:vatspy). */
     boundaries: z.literal('vatspy').optional(),
+    /**
+     * EUROCONTROL ERC sheets (db/erc/<sheet>.json, `pnpm data:erc`; `open` packs
+     * only): designated points, navaids and ATS routes within the radius, and the
+     * ATFM sectors named `sectors.prefix`. © EUROCONTROL: the pack is devOnly.
+     */
+    erc: z
+      .object({
+        sheets: z.array(z.string().regex(/^erc\d{2}[hl]$/)).min(1),
+        sectors: z
+          .object({
+            /** ATFM sector name prefix ("UKBV": Kyiv ACC). */
+            prefix: z.string().regex(/^[A-Z]{4}/),
+            /** Display name prefix ("Kyiv ACC"). */
+            label: z.string().optional(),
+            /** The state's ATFM high / low split between the ERC sheets, flight level (Ukraine 275). */
+            splitFl: z.number().int().positive(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
     /** CIFP controlled / restrictive airspace to import (`cifp` packs only). */
     airspace: z
       .object({
