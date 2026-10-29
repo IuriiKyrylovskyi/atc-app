@@ -759,6 +759,8 @@ Each phase ends with something playable and testable.
 
 ## 19. Sources (checked Oct 2026)
 
+The complete, grouped list of links with licence status is in [LINKS.md](LINKS.md).
+
 - FlightAware AeroAPI pricing — https://www.flightaware.com/commercial/aeroapi/ · overview https://geekflare.com/guides/flight-data-api/
 - Flightradar24 API plans — https://www.flightradar24.com/blog/b2b/how-to-get-started-with-the-flightradar24-api/ · https://github.com/api-evangelist/flightradar24
 - OpenSky terms (commercial licence required) — https://opensky-network.org/about/terms-of-use · https://opensky-network.org/about/faq
