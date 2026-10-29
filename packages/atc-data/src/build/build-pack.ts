@@ -218,24 +218,38 @@ export function buildPack(def: PackDefinition, inputs: BuildInputs, options: Bui
 }
 
 /** Builds the definition's sectors into the pack (with their own source entry). */
-function addSectors(def: PackDefinition, pack: AirspacePack, retrieved: string): void {
+/** FIR borders by id (outer ring, lat/lon) for `along` boundary steps, and where they come from. */
+export interface BorderSource {
+  ring(id: string): LatLon[] | undefined;
+  source: PackSource;
+}
+
+function addSectors(def: PackDefinition, pack: AirspacePack, retrieved: string, borders?: BorderSource): void {
   if (!def.sectors?.length) return;
   const lookup = (id: string): LatLon | undefined =>
     pack.airports.find((a) => a.icao === id)?.arp ?? pack.fixes.find((f) => f.id === id)?.pos;
   const at = new Date(`${retrieved}T00:00:00Z`);
-  pack.areas = def.sectors.map((s) => sectorArea(s, lookup, at));
+  let usedBorders = false;
+  const ring = (id: string) => {
+    usedBorders = true;
+    return borders?.ring(id);
+  };
+  pack.areas = def.sectors.map((s) => sectorArea(s, lookup, at, ring));
   pack.meta.sources.push({
     name: def.sectorsSource ?? `${def.id} sector definitions (atc-app, synthetic)`,
     licence: def.sectorsLicence ?? 'CC0-1.0',
     url: def.sectorsUrl ?? '',
     retrieved,
   });
+  if (usedBorders && borders) pack.meta.sources.push(borders.source);
 }
 
 export interface OpenBuildInputs {
   ourAirports: { airportsCsv: string; runwaysCsv: string; navaidsCsv?: string; retrieved: string };
   /** eAIP ENR pages of the definition's state (pnpm data:eaip <state>). */
   eaip?: { edition: string; stateName: string; url: string; enr31: string; enr33?: string; enr41: string; enr44: string };
+  /** FIR borders for `along` sector steps (definition `boundaries: "vatspy"`). */
+  borders?: BorderSource;
   /** ISO date of the build inputs. */
   retrieved: string;
 }
@@ -309,7 +323,7 @@ export function buildOpenPack(def: PackDefinition, inputs: OpenBuildInputs): Bui
     fixes: [...fixes.values()],
     airways,
   };
-  addSectors(def, pack, inputs.retrieved);
+  addSectors(def, pack, inputs.retrieved, inputs.borders);
   const devOnly = pack.meta.sources.some((s) => !(PUBLISHABLE_LICENCES as readonly string[]).includes(s.licence));
   return { pack, validation: validatePack(pack, { allowUnpublishableLicences: devOnly }), crossCheck: null, warnings, devOnly };
 }
@@ -332,7 +346,12 @@ export function airacOf(isoDate: string): string {
 const ARC_STEP_DEG = 5;
 
 /** Turns a sector definition into a pack area (polygon of coordinates). */
-export function sectorArea(s: SectorDefinition, lookup: (id: string) => LatLon | undefined, date = new Date()): Area {
+export function sectorArea(
+  s: SectorDefinition,
+  lookup: (id: string) => LatLon | undefined,
+  date = new Date(),
+  border: (id: string) => LatLon[] | undefined = () => undefined
+): Area {
   const at = (id: string) => {
     const p = lookup(id);
     if (!p) throw new Error(`sector ${s.id}: unknown point ${id}`);
@@ -342,7 +361,7 @@ export function sectorArea(s: SectorDefinition, lookup: (id: string) => LatLon |
   if (s.polygon) {
     polygon = s.polygon.map((p) => (typeof p === 'string' ? at(p) : p));
   } else if (s.boundary) {
-    polygon = boundaryPolygon(s.id, s.boundary, at, date);
+    polygon = boundaryPolygon(s.id, s.boundary, at, date, border);
   } else {
     const w = s.wedge!;
     const centre = at(w.centre);
@@ -363,6 +382,15 @@ export function sectorArea(s: SectorDefinition, lookup: (id: string) => LatLon |
     floorFt: s.floorFt,
     ceilingFt: s.ceilingFt,
     ...(s.exclude?.length ? { exclude: s.exclude } : {}),
+    ...(s.parts?.length
+      ? {
+          parts: s.parts.map((p) => ({
+            polygon: boundaryPolygon(s.id, p.boundary, at, date, border),
+            floorFt: p.floorFt,
+            ceilingFt: p.ceilingFt,
+          })),
+        }
+      : {}),
   };
 }
 
@@ -386,10 +414,23 @@ function boundaryPoint(sector: string, p: BoundaryPoint, at: (id: string) => Lat
 }
 
 /** Boundary steps → polygon: points in order, arcs densified every ARC_STEP_DEG. */
-function boundaryPolygon(sector: string, steps: BoundaryStep[], at: (id: string) => LatLon, date: Date): LatLon[] {
+function boundaryPolygon(
+  sector: string,
+  steps: BoundaryStep[],
+  at: (id: string) => LatLon,
+  date: Date,
+  border: (id: string) => LatLon[] | undefined = () => undefined
+): LatLon[] {
   const out: LatLon[] = [];
   for (const step of steps) {
-    if (typeof step === 'object' && 'arc' in step) {
+    if (typeof step === 'object' && 'along' in step) {
+      const from = out[out.length - 1];
+      if (!from) throw new Error(`sector ${sector}: "along ${step.along}" needs a previous point`);
+      const ring = border(step.along);
+      if (!ring) throw new Error(`sector ${sector}: no border "${step.along}" (definition "boundaries" / pnpm data:vatspy)`);
+      const to = boundaryPoint(sector, step.to, at, date);
+      out.push(...alongBorder(ring, from, to, step.dir), to);
+    } else if (typeof step === 'object' && 'arc' in step) {
       const from = out[out.length - 1];
       if (!from) throw new Error(`sector ${sector}: an arc needs a previous point`);
       const centre = boundaryPoint(sector, step.arc.centre, at, date);
@@ -408,5 +449,66 @@ function boundaryPolygon(sector: string, steps: BoundaryStep[], at: (id: string)
   const a = out[0]!;
   const z = out[out.length - 1]!;
   if (out.length > 3 && Math.abs(a.lat - z.lat) < 1e-9 && Math.abs(a.lon - z.lon) < 1e-9) out.pop();
+  return out;
+}
+
+/** Signed area of a lat/lon ring (x = lon, y = lat): negative = clockwise. */
+function signedArea(ring: readonly LatLon[]): number {
+  let a = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const p = ring[i]!;
+    const q = ring[(i + 1) % ring.length]!;
+    a += p.lon * q.lat - q.lon * p.lat;
+  }
+  return a / 2;
+}
+
+/** Nearest position on the ring: segment index (from vertex i to i+1) and fraction along it. */
+function nearestOnRing(ring: readonly LatLon[], p: LatLon): { i: number; t: number; nm: number } {
+  const k = Math.cos((p.lat * Math.PI) / 180);
+  let best = { i: 0, t: 0, nm: Infinity };
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i]!;
+    const b = ring[(i + 1) % ring.length]!;
+    const ax = (a.lon - p.lon) * 60 * k;
+    const ay = (a.lat - p.lat) * 60;
+    const dx = (b.lon - a.lon) * 60 * k;
+    const dy = (b.lat - a.lat) * 60;
+    const len = dx * dx + dy * dy;
+    const t = len > 0 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len)) : 0;
+    const nm = Math.hypot(ax + t * dx, ay + t * dy);
+    if (nm < best.nm) best = { i, t, nm };
+  }
+  return best;
+}
+
+/**
+ * Border vertices strictly between two points that lie (nearly) on a FIR border,
+ * walking the border clockwise or counter-clockwise. The published end points
+ * themselves are kept exactly by the caller; only the stretch in between follows
+ * the border source (VATSpy is community-drawn, typically within 0–5 NM).
+ */
+export function alongBorder(ring: readonly LatLon[], from: LatLon, to: LatLon, dir: 'cw' | 'ccw'): LatLon[] {
+  const r = ring.length > 1 && ring[0]!.lat === ring[ring.length - 1]!.lat && ring[0]!.lon === ring[ring.length - 1]!.lon ? ring.slice(0, -1) : [...ring];
+  const n = r.length;
+  const forward = (dir === 'cw') === (signedArea(r) < 0);
+  const a = nearestOnRing(r, from);
+  const b = nearestOnRing(r, to);
+  const out: LatLon[] = [];
+  if (forward) {
+    // Vertices a.i+1 … b.i (unless both on the same segment, a before b).
+    if (a.i === b.i && b.t >= a.t) return out;
+    for (let k = (a.i + 1) % n, steps = 0; steps < n; k = (k + 1) % n, steps++) {
+      out.push(r[k]!);
+      if (k === b.i) break;
+    }
+  } else {
+    // Vertices a.i … b.i+1 walking backwards.
+    if (a.i === b.i && b.t <= a.t) return out;
+    for (let k = a.i, steps = 0; steps < n; k = (k - 1 + n) % n, steps++) {
+      if (k === b.i) break;
+      out.push(r[k]!);
+    }
+  }
   return out;
 }

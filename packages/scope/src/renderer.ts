@@ -17,7 +17,7 @@ import { M_PER_NM, type Conflict, type LocalXY } from '@atc-app/sim';
 import type { ScopeView, ScreenXY } from './view';
 import type { MapFix, VideoMap } from './videomap';
 import { leaderVector, type TrafficTrack } from './traffic';
-import { clockTime, verticalLimits, type MapArea, type RoutePath } from './sectors';
+import { clockTime, verticalLimits, volumesOf, type MapArea, type RoutePath } from './sectors';
 import { GENERIC_SYSTEM, type ScopeSystem } from './systems';
 
 export interface ScopeLayers {
@@ -153,19 +153,23 @@ export class ScopeRenderer {
     if (layers.sectors && map.sectors.length > 0) {
       ctx.fillStyle = P.airspace;
       for (const s of map.sectors) {
-        this.polygon(view, s.polygon);
-        ctx.fill();
+        for (const v of volumesOf(s)) {
+          this.polygon(view, v.polygon);
+          ctx.fill();
+        }
       }
       if (active) {
-        // Inside the active outline, minus the sectors carved out of it.
-        ctx.save();
-        this.polygon(view, active.polygon);
-        ctx.clip();
-        ctx.fillStyle = P.activeSector;
-        this.polygon(view, active.polygon);
-        for (const hole of active.excluded ?? []) this.subpath(view, hole.polygon);
-        ctx.fill('evenodd');
-        ctx.restore();
+        // Inside each active outline, minus the sectors carved out of it.
+        for (const v of volumesOf(active)) {
+          ctx.save();
+          this.polygon(view, v.polygon);
+          ctx.clip();
+          ctx.fillStyle = P.activeSector;
+          this.polygon(view, v.polygon);
+          for (const hole of active.excluded ?? []) this.subpath(view, hole.polygon);
+          ctx.fill('evenodd');
+          ctx.restore();
+        }
       }
     }
 
@@ -222,14 +226,18 @@ export class ScopeRenderer {
       ctx.lineWidth = P.sectorBorderWidth;
       for (const s of map.sectors) {
         if (s === active) continue;
-        this.polygon(view, s.polygon);
-        ctx.stroke();
+        for (const v of volumesOf(s)) {
+          this.polygon(view, v.polygon);
+          ctx.stroke();
+        }
       }
       if (active) {
         ctx.strokeStyle = P.activeSectorBorder;
         ctx.lineWidth = P.activeSectorBorderWidth;
-        this.polygon(view, active.polygon);
-        ctx.stroke();
+        for (const v of volumesOf(active)) {
+          this.polygon(view, v.polygon);
+          ctx.stroke();
+        }
       }
     }
 

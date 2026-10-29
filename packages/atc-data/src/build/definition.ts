@@ -13,7 +13,10 @@ import { latLonSchema } from '../schema';
  * - `{ "dms": "134342N 1003526E" }` — published coordinates;
  * - `{ "radial": "BKK", "deg": 35, "nm": 51.3 }` — VOR radial (magnetic) / DME;
  * - `{ "arc": { "centre": "VTBD", "radiusNm": 50, "dir": "cw" }, "to": <point> }` —
- *   along a circle from the previous point to `to`.
+ *   along a circle from the previous point to `to`;
+ * - `{ "along": "VTBB", "dir": "cw", "to": <point> }` — along a FIR border (AIP
+ *   "then clockwise along Bangkok/Yangon FIR boundary to …"), from the previous
+ *   point to `to`; the border comes from the pack's boundary source (VATSpy).
  */
 const boundaryPointSchema = z.union([
   z.string(),
@@ -31,6 +34,7 @@ const boundaryStepSchema = z.union([
       to: boundaryPointSchema,
     })
     .strict(),
+  z.object({ along: z.string(), dir: z.enum(['cw', 'ccw']), to: boundaryPointSchema }).strict(),
 ]);
 export type BoundaryStep = z.infer<typeof boundaryStepSchema>;
 
@@ -60,6 +64,10 @@ export const sectorDefinitionSchema = z
     boundary: z.array(boundaryStepSchema).min(3).optional(),
     /** Other sectors carved out of this one ("excluding ARR sector, DSB sector"). */
     exclude: z.array(z.string()).optional(),
+    /** Further volumes of the same sector ("and an area bounded by …"). */
+    parts: z
+      .array(z.object({ boundary: z.array(boundaryStepSchema).min(3), floorFt: z.number().min(0), ceilingFt: z.number().positive() }).strict())
+      .optional(),
   })
   .strict()
   .refine((s) => (s.polygon ? 1 : 0) + (s.wedge ? 1 : 0) + (s.boundary ? 1 : 0) === 1, 'give one of polygon, wedge, boundary')
@@ -82,7 +90,7 @@ export const packDefinitionSchema = z
     /** Airports whose runways and procedures are imported (ICAO). First one is the main airport. */
     airports: z.array(z.string().regex(/^[A-Z0-9]{3,4}$/)).min(1),
     /** Fixes, airways and extra airports within this distance are included. */
-    radiusNm: z.number().positive().max(400),
+    radiusNm: z.number().positive().max(600),
     /** Projection centre; default: the main airport. */
     reference: latLonSchema.optional(),
     /** Also add non-instrument airports from OurAirports inside the area. */
@@ -106,6 +114,8 @@ export const packDefinitionSchema = z
     sectorsLicence: z.string().optional(),
     /** URL of the sector definitions source. */
     sectorsUrl: z.string().optional(),
+    /** Where FIR borders for `along` boundary steps come from (db/vatspy, pnpm data:vatspy). */
+    boundaries: z.literal('vatspy').optional(),
   })
   .strict();
 

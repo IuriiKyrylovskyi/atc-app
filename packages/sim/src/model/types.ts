@@ -129,6 +129,14 @@ export interface Area {
   ceilingFt: number;
   /** Other areas carved out of this one (AIP "excluding ARR sector, …"). */
   exclude?: string[];
+  /** Further volumes of the same area ("… and an area bounded by …, up to FL270"). */
+  parts?: AreaPart[];
+}
+
+export interface AreaPart {
+  polygon: LatLon[];
+  floorFt: number;
+  ceilingFt: number;
 }
 
 export interface MvaArea {

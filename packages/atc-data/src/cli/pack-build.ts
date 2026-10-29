@@ -12,9 +12,9 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AirspacePack } from '@atc-app/sim';
+import type { AirspacePack, LatLon } from '@atc-app/sim';
 import { readCifpRecords } from '../importers/cifp';
-import { buildOpenPack, buildPack, type BuildResult, type OpenBuildInputs } from '../build/build-pack';
+import { buildOpenPack, buildPack, type BorderSource, type BuildResult, type OpenBuildInputs } from '../build/build-pack';
 import { parsePackDefinition, type PackDefinition } from '../build/definition';
 import { diffPacks, summarizeDiff } from '../build/diff';
 
@@ -70,6 +70,36 @@ function loadDefinitions(args: Args): PackDefinition[] {
     if (!d) throw new Error(`no packs/${id}.pack.json`);
     return d;
   });
+}
+
+/** VATSpy FIR / UIR borders (db/vatspy/Boundaries.geojson, pnpm data:vatspy): largest outer ring per id. */
+function loadVatspy(): BorderSource {
+  const dir = path.join(ROOT, 'db', 'vatspy');
+  const file = path.join(dir, 'Boundaries.geojson');
+  if (!existsSync(file)) throw new Error('db/vatspy missing — run pnpm data:vatspy');
+  const geo = JSON.parse(readFileSync(file, 'utf8')) as {
+    features: { properties: { id?: string }; geometry: { type: string; coordinates: number[][][] | number[][][][] } }[];
+  };
+  const rings = new Map<string, LatLon[]>();
+  for (const f of geo.features) {
+    const id = f.properties.id;
+    if (!id) continue;
+    const polys = (f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates) as number[][][][];
+    for (const poly of polys) {
+      const outer = poly[0]!.map(([lon, lat]) => ({ lat: lat!, lon: lon! }));
+      if (outer.length > (rings.get(id)?.length ?? 0)) rings.set(id, outer);
+    }
+  }
+  const info = existsSync(path.join(dir, 'SOURCE')) ? readFileSync(path.join(dir, 'SOURCE'), 'utf8').split('\n') : [];
+  return {
+    ring: (id) => rings.get(id),
+    source: {
+      name: `VATSpy data project FIR borders (${(info[1] ?? '').replace('commit ', '').slice(0, 7) || 'unknown commit'})`,
+      licence: 'CC-BY-SA-4.0',
+      url: 'https://github.com/vatsimnetwork/vatspy-data-project',
+      retrieved: (info[2] ?? '').replace('retrieved ', '').trim() || isoDate(file),
+    },
+  };
 }
 
 /** Latest downloaded eAIP edition of a state (db/eaip-<state>/<edition>/). */
@@ -176,7 +206,13 @@ function main(): void {
     if (def.source === 'open') {
       if (!ourAirports) throw new Error(`${def.id}: needs OurAirports (pnpm data:ourairports)`);
       const eaip = def.eaip ? loadEaip(def.eaip) : undefined;
-      r = buildOpenPack(def, { ourAirports, ...(eaip ? { eaip } : {}), retrieved: eaip?.retrieved ?? ourAirports.retrieved });
+      const borders = def.boundaries === 'vatspy' ? loadVatspy() : undefined;
+      r = buildOpenPack(def, {
+        ourAirports,
+        ...(eaip ? { eaip } : {}),
+        ...(borders ? { borders } : {}),
+        retrieved: eaip?.retrieved ?? ourAirports.retrieved,
+      });
     } else {
       if (!existsSync(args.cifp)) throw new Error(`${path.relative(ROOT, args.cifp)} missing — run pnpm data:cifp`);
       r = buildPack(def, { cifp: cifp!, ourAirports, retrieved: isoDate(args.cifp) }, { flagAboveM: args.flagAboveM });
