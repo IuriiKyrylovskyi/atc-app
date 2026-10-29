@@ -19,7 +19,7 @@ export const AREAS: readonly AreaConfig[] = [
   {
     packId: 'kyiv',
     name: 'Kyiv',
-    note: 'Airports, runways and navaids from OurAirports; waypoints, routes and sectors need the Ukrainian AIP (UkSATSE)',
+    note: 'Airports, runways and navaids from OurAirports; waypoints, routes and Kyiv ACC sectors from EUROCONTROL ERC-06 (development only)',
   },
   {
     packId: 'bangkok',

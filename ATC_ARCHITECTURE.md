@@ -92,7 +92,9 @@ Target package layout:
 
 ```
 packages/
-  app/            Vue shell + scope renderer + command layer (existing)
+  app/            Vue shell + scope renderer + command layer (existing);
+                  src/viewmodels: adapters from packs / sim snapshots (later live
+                  feeds, replays) to the display objects the components read
   sim/            NEW — pure TS simulation core (Worker + Node), unit-tested
   atc-data/       NEW — pack schemas, importers (CIFP / NASR / AIXM / OurAirports),
                   chart georeferencing, AIRAC pack builder CLI
