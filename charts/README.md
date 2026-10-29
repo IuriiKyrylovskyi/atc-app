@@ -37,3 +37,29 @@ EUROCONTROL". Product use of any geometry needs that written permission.
 So the sector polygons (and FIR / route geometry) can be extracted layer by
 layer and converted to lat/lon through the viewport transform — useful to
 validate an AIP-based importer or for a local prototype, not for distribution.
+
+## FAA IFR Enroute charts (North America)
+
+Source: https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/ifr/
+— US Government work, **public domain**: free to display, georeference and
+trace. Nothing downloaded yet; put files here when needed.
+
+| Series | Charts | Files (edition folder `MM-DD-YYYY`) |
+|---|---|---|
+| IFR Enroute Low, conterminous US | L-01 … L-36 | GeoTIFF `enr_l01.zip` … `enr_l36.zip`; PDF `delus1.zip` … (two charts per PDF zip) |
+| IFR Enroute High, conterminous US | H-01 … H-12 | GeoTIFF `enr_h01.zip` …; PDF `dehus1.zip` … |
+| Alaska low / high | AK L-01…L-04, AK H-01…H-02 | `enr_akl01.zip` … / `delak1.zip` …, `enr_akh01.zip` / `dehak1.zip` |
+| Area charts (US terminal areas) | A-1, A-2 | `enr_a01.zip`, `enr_a02.zip` / `darea.zip` |
+| Hawaii / Pacific | P-1, P-2 | `enr_p01.zip` … / `dephi1.zip` |
+| Oceanic route charts | NARC, PORC, WATRS | `narc_tif.zip` / `narc_pdf.zip`, `porc_*`, `watrs_*` |
+| Caribbean low / high | CL-1, CL-3, CL-5, CH-1 … | `DELCB1_tif.zip` / `delcb1.zip` … |
+| Full 56-day set | all of the above | `DDECUS.zip` |
+
+Base URL: `https://aeronav.faa.gov/enroute/<MM-DD-YYYY>/`. 56-day cycle (current
+edition 03 Sep 2026, next 29 Oct 2026); the next edition is published 19 days
+before it becomes effective. The VIS 26-02 charting notice ends some FAA
+products from May 2026 — check it before depending on a series.
+
+For the NY TMA pick the sheets from the coverage indexes on the FAA page
+(Enroute Low index includes Area chart coverage); the pack itself already
+comes from CIFP / NASR data, so these are for visual validation.
