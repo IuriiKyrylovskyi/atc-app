@@ -12,9 +12,9 @@
   "engineStrict": true,
   "scripts": {
     "bootstrap": "pnpm install",
-    "dev": "concurrently \"pnpm --filter @atc-app/app dev\" \"pnpm --filter @atc-app/electron dev\"",
+    "dev": "concurrently -n web,electron \"pnpm dev:app\" \"pnpm dev:electron\"",
     "dev:app": "pnpm --filter @atc-app/app dev",
-    "dev:electron": "node scripts/check-skymess-updates.mjs && pnpm --filter @atc-app/electron dev",
+    "dev:electron": "concurrently -n vite,app \"pnpm --filter @atc-app/app dev:electron\" \"pnpm --filter @atc-app/electron dev\"",
     "dev:android": "node scripts/check-skymess-updates.mjs && echo 🔧 Building web app... && pnpm --filter @atc-app/app build && echo 🔄 Syncing with Capacitor... && pnpm --filter @atc-app/mobile exec cap sync android && echo 🏗️ Building Android APK... && cd packages/mobile/android && gradlew.bat assembleDebug && echo 📲 Installing APK... && adb install -r app\\build\\outputs\\apk\\debug\\app-debug.apk && echo 🚀 Launching app... && adb shell am start -n com.atcapp.app/com.atcapp.app.MainActivity",
     "dev:ios": "node scripts/check-skymess-updates.mjs && pnpm --filter @atc-app/app build && pnpm --filter @atc-app/mobile exec cap sync ios && cd packages/mobile/ios/App && xcodebuild -scheme App -configuration Debug -sdk iphonesimulator 'platform=iOS Simulator,name=iPhone 15' -derivedDataPath build && xcrun simctl install booted build/Build/Products/Debug-iphonesimulator/App.app && xcrun simctl launch booted com.atcapp.app",
     "dev:mobile": "node -e \"const os=require('os'); const isMac=os.platform()==='darwin'; console.log(isMac ? '🍏 Running iOS build...' : '🤖 Running Android build...'); const {execSync}=require('child_process'); execSync(isMac ? 'pnpm run dev:ios' : 'pnpm run dev:android', {stdio:'inherit'});\"",

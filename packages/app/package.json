@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:electron": "vite --port 5274 --strictPort",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint --ext .ts,.vue src",
