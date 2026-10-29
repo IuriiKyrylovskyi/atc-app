@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import type { AirspacePack } from '@atc-app/sim';
 import { readCifpRecords } from '../importers/cifp';
 import { vatspyRings, vatspySource } from '../importers/vatspy';
+import type { ErcSheet } from '../importers/erc';
 import { buildOpenPack, buildPack, type BorderSource, type BuildResult, type OpenBuildInputs } from '../build/build-pack';
 import { parsePackDefinition, type PackDefinition } from '../build/definition';
 import { diffPacks, summarizeDiff } from '../build/diff';
@@ -84,6 +85,15 @@ function loadVatspy(): BorderSource {
     ring: (id) => rings.get(id),
     source: vatspySource((info[1] ?? '').replace('commit ', ''), (info[2] ?? '').replace('retrieved ', '').trim() || isoDate(file)),
   };
+}
+
+/** Extracted ERC sheets (db/erc/<sheet>.json, pnpm data:erc). */
+function loadErc(sheets: string[]): ErcSheet[] {
+  return sheets.map((id) => {
+    const file = path.join(ROOT, 'db', 'erc', `${id}.json`);
+    if (!existsSync(file)) throw new Error(`db/erc/${id}.json missing — put the ERC GeoPDF in charts/ and run pnpm data:erc`);
+    return JSON.parse(readFileSync(file, 'utf8')) as ErcSheet;
+  });
 }
 
 /** Latest downloaded eAIP edition of a state (db/eaip-<state>/<edition>/). */
@@ -191,10 +201,12 @@ function main(): void {
       if (!ourAirports) throw new Error(`${def.id}: needs OurAirports (pnpm data:ourairports)`);
       const eaip = def.eaip ? loadEaip(def.eaip) : undefined;
       const borders = def.boundaries === 'vatspy' ? loadVatspy() : undefined;
+      const erc = def.erc ? loadErc(def.erc.sheets) : undefined;
       r = buildOpenPack(def, {
         ourAirports,
         ...(eaip ? { eaip } : {}),
         ...(borders ? { borders } : {}),
+        ...(erc ? { erc } : {}),
         retrieved: eaip?.retrieved ?? ourAirports.retrieved,
       });
     } else {

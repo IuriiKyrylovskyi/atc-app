@@ -38,6 +38,11 @@ So the sector polygons (and FIR / route geometry) can be extracted layer by
 layer and converted to lat/lon through the viewport transform — useful to
 validate an AIP-based importer or for a local prototype, not for distribution.
 
+`pnpm data:erc` does that for every `charts/erc*.pdf` (pdf.js) and writes
+`db/erc/<sheet>.json`; packs with an `erc` section (Kyiv) build points, routes
+and ATFM sectors from it and are devOnly. Positions come from the drawing:
+navaid symbols land 0.02–0.25 NM from their published positions.
+
 ## Ukraine
 
 `UKKT_AIP.pdf` — Ukrainian AIP AD 2 for UKKT Kyiv/Antonov-1 (23 pages: ARP

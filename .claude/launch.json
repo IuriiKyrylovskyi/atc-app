@@ -6,6 +6,12 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@atc-app/app", "dev"],
       "port": 5273
+    },
+    {
+      "name": "app-worktree",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@atc-app/app", "dev", "--port", "5274", "--strictPort"],
+      "port": 5274
     }
   ]
 }

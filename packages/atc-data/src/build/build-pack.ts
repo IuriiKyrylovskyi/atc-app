@@ -28,6 +28,7 @@ import {
 import { importCifpAirspace, importCifpArea, readCifpRecords, type CifpRecords } from '../importers/cifp';
 import { importOurAirports, importOurAirportsNavaids, type OurAirportsType } from '../importers/ourairports';
 import { importEaipNavaids, importEaipPoints, importEaipRoutes, parseDms } from '../importers/eaip';
+import { ERC_LICENCE, ERC_SOURCE_URL, ercNavigation, ercSectors, type ErcSheet } from '../importers/erc';
 import { runwayGeometryIssues, validatePack, type ValidationResult } from '../validate';
 import { PUBLISHABLE_LICENCES } from '../schema';
 import type { BoundaryPoint, BoundaryStep, PackDefinition, SectorDefinition } from './definition';
@@ -259,14 +260,17 @@ export interface OpenBuildInputs {
   eaip?: { edition: string; stateName: string; url: string; enr31: string; enr33?: string; enr41: string; enr44: string };
   /** FIR borders for `along` sector steps (definition `boundaries: "vatspy"`). */
   borders?: BorderSource;
+  /** Extracted ERC sheets named by the definition's `erc.sheets`. */
+  erc?: ErcSheet[];
   /** ISO date of the build inputs. */
   retrieved: string;
 }
 
 /**
  * Builds a pack without FAA CIFP: airports / runways from OurAirports, points,
- * navaids and routes from the state's eAIP (or OurAirports navaids when there
- * is none), sectors from the definition. No procedures yet.
+ * navaids and routes from the state's eAIP, or from EUROCONTROL ERC sheets
+ * (navaids from OurAirports where it has them), or OurAirports navaids alone;
+ * sectors from the definition and / or the ERC's ATFM sectors. No procedures yet.
  */
 export function buildOpenPack(def: PackDefinition, inputs: OpenBuildInputs): BuildResult {
   const warnings: string[] = [];
@@ -318,6 +322,49 @@ export function buildOpenPack(def: PackDefinition, inputs: OpenBuildInputs): Bui
     for (const f of importOurAirportsNavaids(inputs.ourAirports.navaidsCsv, box)) if (inArea(f.pos)) fixes.set(f.id, f);
   }
 
+  let ercAreas: Area[] = [];
+  if (def.erc) {
+    const sheets = def.erc.sheets.map((id) => {
+      const s = inputs.erc?.find((x) => x.sheet === id);
+      if (!s) throw new Error(`${def.id}: ERC sheet ${id} not provided (pnpm data:erc)`);
+      return s;
+    });
+    // Navaids keep OurAirports' kind and position where it has them (same ident within 2 NM).
+    const nav = ercNavigation(sheets, (p) => distanceNm(reference, p) <= def.radiusNm * 1.5);
+    warnings.push(...nav.warnings);
+    const oaNavaids = inputs.ourAirports.navaidsCsv ? importOurAirportsNavaids(inputs.ourAirports.navaidsCsv, bboxAround(reference, def.radiusNm * 1.5)) : [];
+    for (const p of nav.points) {
+      if (fixes.has(p.id)) continue;
+      const oa = oaNavaids.find((n) => n.id === p.id && distanceNm(n.pos, p.pos) < 2);
+      fixes.set(p.id, oa ?? { id: p.id, kind: p.kind === 'navaid' ? 'vor' : 'waypoint', pos: p.pos });
+    }
+    airways = nav.airways
+      .map((a) => ({
+        id: a.id,
+        segments: a.segments.filter((s) => [s.from, s.to].some((id) => { const p = fixes.get(id)?.pos; return p && inArea(p); })),
+      }))
+      .filter((a) => a.segments.length > 0);
+    const used = new Set(airways.flatMap((a) => a.segments.flatMap((s) => [s.from, s.to])));
+    for (const [id, f] of fixes) if (!inArea(f.pos) && !used.has(id)) fixes.delete(id);
+
+    if (def.erc.sectors) {
+      const sec = ercSectors(sheets, {
+        prefix: def.erc.sectors.prefix,
+        ...(def.erc.sectors.label ? { label: def.erc.sectors.label } : {}),
+        splitFt: def.erc.sectors.splitFl * 100,
+      });
+      warnings.push(...sec.warnings);
+      ercAreas = sec.areas;
+    }
+    const editions = [...new Set(sheets.map((s) => s.edition))].join(', ');
+    sources.push({
+      name: `EUROCONTROL ERC ${sheets.map((s) => s.sheet.toUpperCase()).join(' / ')} (${editions}): points, routes${def.erc.sectors ? `, ATFM sectors ${def.erc.sectors.prefix}*` : ''}`,
+      licence: ERC_LICENCE,
+      url: ERC_SOURCE_URL,
+      retrieved: sheets[0]!.edition,
+    });
+  }
+
   const pack: AirspacePack = {
     meta: {
       id: def.id,
@@ -331,6 +378,7 @@ export function buildOpenPack(def: PackDefinition, inputs: OpenBuildInputs): Bui
     runways,
     fixes: [...fixes.values()],
     airways,
+    ...(ercAreas.length ? { areas: ercAreas } : {}),
   };
   addSectors(def, pack, inputs.retrieved, inputs.borders);
   const devOnly = pack.meta.sources.some((s) => !(PUBLISHABLE_LICENCES as readonly string[]).includes(s.licence));

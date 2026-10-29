@@ -3,6 +3,10 @@
   "name": "Kyiv (Boryspil, Zhuliany, Antonov-1, Hostomel)",
   "source": "open",
   "airports": ["UKBB", "UKKK", "UKKT", "UKKM"],
-  "radiusNm": 120,
-  "vfrAirports": { "radiusNm": 60, "types": ["large_airport", "medium_airport"] }
+  "radiusNm": 200,
+  "vfrAirports": { "radiusNm": 60, "types": ["large_airport", "medium_airport"] },
+  "erc": {
+    "sheets": ["erc06h", "erc06l"],
+    "sectors": { "prefix": "UKBV", "label": "Kyiv ACC", "splitFl": 275 }
+  }
 }

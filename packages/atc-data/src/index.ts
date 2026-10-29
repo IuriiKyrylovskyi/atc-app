@@ -39,3 +39,5 @@ export * from './build/build-pack';
 export * from './build/diff';
 export * from './importers/eaip';
 export * from './importers/vatspy';
+export * from './importers/geopdf';
+export * from './importers/erc';
