@@ -78,6 +78,7 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [x] Speed vector with one dash per minute; click a track symbol: route with ETOs over each point
 - [ ] Real sector data (ANSP sectorisation), FIR / neighbour boundaries, handoffs and track assumption
 - [ ] ⛔ Decide official sector source: AIP ENR 2.1 importer (e.g. Thailand Bangkok ACC, 12 sectors, public eAIP) and/or the chosen TMA's AIP; needs FIR boundary following, DME arcs, multi-volume sectors, AIP copyright check
+- [ ] EUROCONTROL ERC GeoPDF extractor (dev / validation only): read the `ATFM Sector` / `FIR/UIR` layers of ERC-06 (`charts/`), convert through the GeoPDF viewport (EC Lambert Conformal Conic) to lat/lon, label sectors from `ATFM Sector Annotation`; compare with AIP data. Ask EUROCONTROL for written permission before any product use
 - [ ] Airspace areas from CIFP (UC / UR) on the scope (renderer styling is ready)
 - [x] Traffic on scope: sim in a Web Worker, one advance per radar sweep (4.8 s, ASR-9), pause / ×1 ×2 ×4 ×8
 - [x] Targets: symbol, history dots, speed vector (0/1/2/4 min), leader line, click to select + info panel
