@@ -162,6 +162,9 @@ importers:
       vite-plugin-vuetify:
         specifier: ^2.1.2
         version: 2.1.2(vite@5.4.20(@types/node@24.7.0)(less@4.9.0)(sass@1.94.0)(terser@5.46.1))(vue@3.5.22(typescript@5.9.3))(vuetify@3.10.10)
+      vitest:
+        specifier: ^3.2.6
+        version: 3.2.7(@types/debug@4.1.12)(@types/node@24.7.0)(less@4.9.0)(sass@1.94.0)(terser@5.46.1)
       vue-tsc:
         specifier: ^2.2.10
         version: 2.2.12(typescript@5.9.3)

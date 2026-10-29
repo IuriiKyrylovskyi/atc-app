@@ -20,25 +20,15 @@
  */
 import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import {
-  courseTo,
-  distanceNm,
-  normDeg,
-  type AircraftState,
-  type AirspacePack,
-  type LatLon,
-  type Snapshot,
-} from '@atc-app/sim';
+import { type AircraftState, type AirspacePack, type LatLon, type Snapshot } from '@atc-app/sim';
 import {
   buildVideoMap,
   DEFAULT_LAYERS,
   DEFAULT_TRAFFIC_OPTIONS,
   findSystem,
   hitTestDetail,
-  magneticHeading,
   routePath,
   SCOPE_SYSTEMS,
-  verticalLimits,
   RANGE_PRESETS_NM,
   ScopeRenderer,
   ScopeView,
@@ -51,10 +41,26 @@ import {
   type VideoMap,
 } from '@atc-app/scope';
 import { buildScenario, findScenario, scenariosForPack } from '@atc-app/scenario';
-import { instruction, parseCommand, radioCallsign, readback, unable, type CommandContext } from '@atc-app/voice';
+import { instruction, parseCommand, readback, type CommandContext } from '@atc-app/voice';
 import { loadPack, loadPackManifest } from '@/services/packLoader';
 import { AREAS } from '@/config/areas';
 import { SIM_RATES, SimSession, type SimRate } from '@/services/simSession';
+import {
+  aircraftDetail,
+  aircraftFromSim,
+  airspaceFromPack,
+  areaOptions as buildAreaOptions,
+  clockHms,
+  clockMs,
+  cursorReadout,
+  EMPTY_TRAFFIC,
+  logEntriesFromSim,
+  runwayKey,
+  trafficSummary,
+  type AirspaceVM,
+  type LogEntryVM,
+  type TrafficSummaryVM,
+} from '@/viewmodels';
 
 const route = useRoute();
 const router = useRouter();
@@ -62,7 +68,8 @@ const router = useRouter();
 const host = ref<HTMLDivElement | null>(null);
 const canvas = ref<HTMLCanvasElement | null>(null);
 const map = shallowRef<VideoMap | null>(null);
-const magVar = ref(0);
+/** The loaded pack as the panels read it (sectors, sources, lookups). */
+const airspace = shallowRef<AirspaceVM | null>(null);
 const error = ref<string | null>(null);
 const loading = ref(true);
 const layers = reactive<ScopeLayers>({ ...DEFAULT_LAYERS });
@@ -76,23 +83,16 @@ const scenarioName = ref<string | null>(null);
 const simTime = ref(0);
 const simRate = ref<SimRate>(1);
 const paused = ref(false);
-const aircraftCount = ref(0);
+const summary = ref<TrafficSummaryVM>(EMPTY_TRAFFIC);
 const selectedAc = shallowRef<AircraftState | null>(null);
 const VECTOR_MINUTES = [0, 1, 2, 4] as const;
 let picture: TrafficPicture | null = null;
 let session: SimSession | null = null;
 let hits: TrafficHit[] = [];
-let fixIds = new Set<string>();
-/** `${airport}|${runway}` for runways with an ILS. */
-let ilsRunways = new Set<string>();
 const landedCount = ref(0);
 let loadedPack: AirspacePack | null = null;
 let blinkTimer: ReturnType<typeof setInterval> | null = null;
-const conflictCount = ref(0);
-const ownedCount = ref(0);
-const incomingCount = ref(0);
 const scenarioId = ref('none');
-let fixPositions = new Map<string, LatLon>();
 
 // ── ATC system profile + active sector (remembered per viewer) ─────────────
 const SYSTEM_KEY = 'atc.scope.system';
@@ -114,9 +114,7 @@ const store = (key: string, value: string): void => {
 const systemId = ref(findSystem(stored(SYSTEM_KEY)).id);
 const system = computed(() => findSystem(systemId.value));
 const activeSector = ref<string>('');
-const sectorOptions = computed(() =>
-  (map.value?.sectors ?? []).map((s) => ({ id: s.id, label: `${s.id} ${s.name ?? ''} ${verticalLimits(s)}` }))
-);
+const sectorOptions = computed(() => airspace.value?.sectors ?? []);
 
 function setSystem(id: string): void {
   systemId.value = findSystem(id).id;
@@ -128,39 +126,31 @@ function setActiveSector(id: string): void {
   activeSector.value = id;
   store(sectorKey(), id);
   picture?.setSectors(map.value?.sectors ?? [], id || null);
-  countOwnership();
+  summarise();
   requestDraw();
 }
 
-function countOwnership(): void {
-  const list = picture?.list() ?? [];
-  ownedCount.value = list.filter((t) => t.ownership === 'owned').length;
-  incomingCount.value = list.filter((t) => t.ownership === 'incoming').length;
+function summarise(): void {
+  summary.value = picture ? trafficSummary(picture.list(), picture.conflicts) : EMPTY_TRAFFIC;
 }
 
 /** Routes with ETOs of the tracks whose route is shown. */
 function shownRoutes(): RoutePath[] {
-  if (!picture || !map.value || !loadedPack) return [];
-  const pack = loadedPack;
+  const a = airspace.value;
+  if (!picture || !map.value || !a) return [];
   return picture
     .list()
     .filter((t) => t.routeShown)
     .map((t) => {
-      const a = t.ac.target.approach;
-      const rwy = a ? pack.runways.find((r) => r.airport === a.airport && r.id === a.runway) : undefined;
-      return routePath(t.ac, simTime.value, map.value!.projection, (id) => fixPositions.get(id), rwy ? { id: `RW${rwy.id}`, pos: rwy.threshold } : undefined);
+      const app = t.ac.target.approach;
+      const threshold = app ? a.thresholds.get(runwayKey(app.airport, app.runway)) : undefined;
+      return routePath(t.ac, simTime.value, map.value!.projection, (id) => a.fixes.get(id), threshold);
     });
 }
 const scenarioOptions = ref<{ id: string; name: string }[]>([]);
 
 // ── Command line + comms log ───────────────────────────────────────────────
-interface LogLine {
-  id: number;
-  t: number;
-  kind: 'atc' | 'pilot' | 'unable' | 'error' | 'alert' | 'info';
-  who: string;
-  text: string;
-}
+type LogLine = LogEntryVM & { id: number };
 const commandInput = ref<HTMLInputElement | null>(null);
 const commandText = ref('');
 const commandError = ref<string | null>(null);
@@ -221,30 +211,11 @@ function fitCanvas(): void {
 // ── Sim session ────────────────────────────────────────────────────────────
 function onSnapshot(s: Snapshot): void {
   if (!picture) return;
-  for (const e of s.events) {
-    if (e.type === 'clearance_rejected') addLog('unable', e.callsign, unable(e.callsign, e.reason).text, e.t);
-    else if (e.type === 'message_rejected') addLog('error', e.message.to, e.reason, e.t);
-    else if (e.type === 'conflict_alert') {
-      addLog('alert', 'CA', `${e.a} / ${e.b} ${e.inS > 0 ? `loss in ${Math.round(e.inS)} s` : 'separation lost'}`, e.t);
-    } else if (e.type === 'separation_lost') {
-      addLog('alert', 'LOS', `${e.a} / ${e.b} ${e.lateralNm.toFixed(1)} NM ${Math.round(e.verticalFt)} ft`, e.t);
-    } else if (e.type === 'separation_restored') {
-      const min = `min ${e.minLateralNm.toFixed(1)} NM / ${Math.round(e.minVerticalFt)} ft`;
-      addLog('info', 'SEP', `${e.a} / ${e.b} restored after ${Math.round(e.durationS)} s, ${min}`, e.t);
-    } else if (e.type === 'localizer_captured') {
-      addLog('info', e.callsign, `established on the localizer ${e.runway}`, e.t);
-    } else if (e.type === 'landed') {
-      landedCount.value++;
-      addLog('info', e.callsign, `landed ${e.airport} ${e.runway}`, e.t);
-    } else if (e.type === 'missed_approach') {
-      addLog('unable', e.callsign, `Going around, ${radioCallsign(e.callsign).text} (${e.reason})`, e.t);
-    }
-  }
+  for (const l of logEntriesFromSim(s.events)) addLog(l.kind, l.who, l.text, l.t);
+  landedCount.value += s.events.filter((e) => e.type === 'landed').length;
   picture.update(s);
   simTime.value = s.t;
-  aircraftCount.value = picture.size;
-  countOwnership();
-  conflictCount.value = s.conflicts.length;
+  summarise();
   if (traffic.selected && !picture.get(traffic.selected)) traffic.selected = null;
   selectedAc.value = traffic.selected ? picture.get(traffic.selected)!.ac : null;
   requestDraw();
@@ -264,8 +235,8 @@ function addLog(kind: LogLine['kind'], who: string, text: string, t = simTime.va
 const commandContext = (): CommandContext => ({
   callsigns: picture?.list().map((t) => t.callsign) ?? [],
   selected: traffic.selected,
-  hasFix: (id) => fixIds.has(id),
-  hasIls: (airport, runway) => ilsRunways.has(`${airport}|${runway}`),
+  hasFix: (id) => airspace.value?.fixes.has(id) ?? false,
+  hasIls: (airport, runway) => airspace.value?.ilsRunways.has(runwayKey(airport, runway)) ?? false,
   aircraft: (cs) => picture?.get(cs)?.ac,
 });
 
@@ -334,10 +305,7 @@ const commandPlaceholder = computed(() =>
   traffic.selected ? `${traffic.selected} › D080 H240 S220 · Enter` : 'DAL1192 D080 H240 S220 · Enter'
 );
 
-const logTime = (t: number) => {
-  const s = Math.floor(t);
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-};
+const logTime = clockMs;
 
 function setRate(r: SimRate): void {
   simRate.value = r;
@@ -502,46 +470,17 @@ function onKey(e: KeyboardEvent): void {
 }
 
 // ── Readouts ───────────────────────────────────────────────────────────────
-function dm(value: number, pos: string, neg: string, degDigits: number): string {
-  const v = Math.abs(value);
-  const deg = Math.floor(v);
-  const min = (v - deg) * 60;
-  return `${value >= 0 ? pos : neg}${String(deg).padStart(degDigits, '0')}°${min.toFixed(1).padStart(4, '0')}'`;
-}
-
 const readout = computed(() => {
   const c = cursor.value;
-  const m = map.value;
-  if (!c || !m) return '';
-  const brgMag = normDeg(courseTo(m.reference, c) - magVar.value);
-  const dist = distanceNm(m.reference, c);
-  return `${dm(c.lat, 'N', 'S', 2)} ${dm(c.lon, 'E', 'W', 3)}   ${String(Math.round(brgMag) || 360).padStart(3, '0')}° ${dist.toFixed(1)} NM`;
+  const a = airspace.value;
+  return c && a ? cursorReadout(c, a.reference, a.magVar) : '';
 });
 
-const clock = computed(() => {
-  const s = Math.floor(simTime.value);
-  const hh = String(Math.floor(s / 3600)).padStart(2, '0');
-  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
-  const ss = String(s % 60).padStart(2, '0');
-  return `${hh}:${mm}:${ss}`;
-});
+const clock = computed(() => clockHms(simTime.value));
 
 const selectedInfo = computed(() => {
   const ac = selectedAc.value;
-  if (!ac) return null;
-  const fl = (ft: number) => String(Math.round(ft / 100)).padStart(3, '0');
-  const t = ac.target;
-  const next = [t.directFix, ...t.route].filter(Boolean).slice(0, 4).join(' ');
-  const PHASE = { armed: 'CLEARED', localizer: 'LOC', glideslope: 'LOC GS' } as const;
-  const approach = t.approach ? `${t.approach.type} ${t.approach.runway} ${PHASE[t.approach.phase]}` : '';
-  const route = next ? `DCT ${next}` : t.headingTrue !== null ? 'VECTORS' : '';
-  return {
-    head: [ac.callsign, `${ac.icaoType}/${ac.wake}`, ac.destination, `SQ ${ac.squawk}`].filter(Boolean).join('  '),
-    alt: `ALT ${fl(ac.altFt)}${t.altFt !== ac.altFt ? ` → ${fl(t.altFt)}` : ''}`,
-    spd: `IAS ${Math.round(ac.casKt)}  GS ${Math.round(ac.gsKt)}  M${ac.mach.toFixed(2).slice(1)}`,
-    hdg: `HDG ${String(magneticHeading(ac, magVar.value)).padStart(3, '0')}`,
-    nav: t.approach && t.approach.phase !== 'armed' ? approach : [route, approach].filter(Boolean).join(' · '),
-  };
+  return ac ? aircraftDetail(aircraftFromSim(ac, airspace.value?.magVar ?? 0)) : null;
 });
 
 // ── Lifecycle ──────────────────────────────────────────────────────────────
@@ -568,10 +507,7 @@ function stopTraffic(): void {
   session = null;
   picture = null;
   scenarioName.value = null;
-  aircraftCount.value = 0;
-  conflictCount.value = 0;
-  ownedCount.value = 0;
-  incomingCount.value = 0;
+  summary.value = EMPTY_TRAFFIC;
   landedCount.value = 0;
   simTime.value = 0;
   log.value = [];
@@ -602,9 +538,7 @@ function blink(): void {
 }
 
 // ── Areas ──────────────────────────────────────────────────────────────────
-const areaOptions = ref<{ packId: string; name: string; note: string; available: boolean }[]>(
-  AREAS.map((a) => ({ ...a, available: true }))
-);
+const areaOptions = ref(buildAreaOptions(AREAS, null, !!import.meta.env.DEV));
 
 function changeArea(packId: string): void {
   if (packId !== route.params.packId) void router.push({ name: 'Scope', params: { packId } });
@@ -614,6 +548,7 @@ function changeArea(packId: string): void {
 async function loadArea(packId: string): Promise<void> {
   stopTraffic();
   map.value = null;
+  airspace.value = null;
   loadedPack = null;
   error.value = null;
   loading.value = true;
@@ -624,12 +559,9 @@ async function loadArea(packId: string): Promise<void> {
     scenarioOptions.value = scenariosForPack(pack.meta.id).map((s) => ({ id: s.id, name: s.name }));
     const m = buildVideoMap(pack);
     map.value = m;
-    fixIds = new Set(pack.fixes.map((f) => f.id));
-    fixPositions = new Map(pack.fixes.map((f) => [f.id, f.pos]));
+    airspace.value = airspaceFromPack(pack, m);
     const savedSector = stored(sectorKey()) ?? '';
     activeSector.value = m.sectors.some((s) => s.id === savedSector) ? savedSector : '';
-    ilsRunways = new Set(pack.runways.filter((r) => r.ils).map((r) => `${r.airport}|${r.id}`));
-    magVar.value = pack.meta.magVar;
     fitCanvas();
     await startTraffic(pack, m);
   } catch (e) {
@@ -656,10 +588,7 @@ onMounted(async () => {
   blinkTimer = setInterval(blink, 500);
   loadPackManifest()
     .then((packs) => {
-      areaOptions.value = AREAS.map((a) => {
-        const entry = packs[a.packId];
-        return { ...a, available: Boolean(entry && (!entry.devOnly || import.meta.env.DEV)) };
-      });
+      areaOptions.value = buildAreaOptions(AREAS, packs, !!import.meta.env.DEV);
     })
     .catch(() => undefined);
   await loadArea(String(route.params.packId));
@@ -706,7 +635,7 @@ onBeforeUnmount(() => {
         <option v-for="s in sectorOptions" :key="s.id" :value="s.id">{{ s.label }}</option>
       </select>
       <span v-else-if="map" class="title dim-title">no sectors defined</span>
-      <span v-if="map" class="title">AIRAC {{ map.airac }}</span>
+      <span v-if="airspace" class="title">AIRAC {{ airspace.airac }}</span>
       <select
         v-if="map && scenarioOptions.length"
         class="btn scenario"
@@ -798,9 +727,9 @@ onBeforeUnmount(() => {
 
     <div class="panel bottom-left">
       <span>RNG {{ rangeNm.toFixed(rangeNm < 10 ? 1 : 0) }} NM</span>
-      <span v-if="scenarioName">ACFT {{ aircraftCount }}</span>
-      <span v-if="scenarioName && activeSector">{{ activeSector }} OWN {{ ownedCount }} · INC {{ incomingCount }}</span>
-      <span v-if="conflictCount" class="alert-count">CA {{ conflictCount }}</span>
+      <span v-if="scenarioName">ACFT {{ summary.aircraft }}</span>
+      <span v-if="scenarioName && activeSector">{{ activeSector }} OWN {{ summary.owned }} · INC {{ summary.incoming }}</span>
+      <span v-if="summary.conflicts" class="alert-count">CA {{ summary.conflicts }}</span>
       <span v-if="landedCount">LDG {{ landedCount }}</span>
       <span v-if="readout">{{ readout }}</span>
       <span class="dim">{{ frameMs.toFixed(1) }} ms</span>
