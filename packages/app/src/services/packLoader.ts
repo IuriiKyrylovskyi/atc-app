@@ -16,6 +16,8 @@ export interface PackManifestEntry {
   bytes: number;
   sha256: string;
   counts: Record<string, number>;
+  /** Built from state AIP data: loads in development builds only. */
+  devOnly?: boolean;
 }
 
 const BASE = 'packs/';
@@ -31,9 +33,11 @@ export async function loadPack(id: string): Promise<{ pack: AirspacePack; entry:
   const manifest = await loadPackManifest();
   const entry = manifest[id];
   if (!entry) throw new Error(`Pack "${id}" is not built (available: ${Object.keys(manifest).join(', ') || 'none'})`);
+  // Packs built from state AIP data (devOnly) are for development builds only.
+  if (entry.devOnly && !import.meta.env.DEV) throw new Error(`Pack "${id}" uses development-only AIP data`);
   const res = await fetch(BASE + entry.file);
   if (!res.ok) throw new Error(`Pack file ${entry.file}: HTTP ${res.status}`);
-  const result = validatePack(await res.json());
+  const result = validatePack(await res.json(), { allowUnpublishableLicences: entry.devOnly === true });
   if (!result.ok || !result.pack) {
     throw new Error(`Pack ${entry.file} failed validation: ${result.errors[0]?.message ?? 'unknown error'}`);
   }

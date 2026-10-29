@@ -1,0 +1,8 @@
+{
+  "id": "kyiv",
+  "name": "Kyiv (Boryspil, Zhuliany, Antonov-1, Hostomel)",
+  "source": "open",
+  "airports": ["UKBB", "UKKK", "UKKT", "UKKM"],
+  "radiusNm": 120,
+  "vfrAirports": { "radiusNm": 60, "types": ["large_airport", "medium_airport"] }
+}

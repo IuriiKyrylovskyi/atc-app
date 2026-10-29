@@ -1,0 +1,107 @@
+{
+  "id": "bangkok",
+  "name": "Bangkok (Suvarnabhumi, Don Mueang)",
+  "source": "open",
+  "eaip": "th",
+  "airports": ["VTBS", "VTBD"],
+  "radiusNm": 220,
+  "reference": { "lat": 13.914444444444444, "lon": 100.60555555555555 },
+  "vfrAirports": { "radiusNm": 80, "types": ["large_airport", "medium_airport"] },
+  "sectorsSource": "Thailand AIP ENR 2.1 (AIRAC 2026-10-29): Bangkok TMA sectorisation (south-flow runway configuration) and Bangkok ACC sectors 3N / 6N, transcribed",
+  "sectorsLicence": "State-AIP-Development",
+  "sectorsUrl": "https://aip.caat.or.th/2026-10-29-AIRAC/html/eAIP/VT-ENR-2.1-en-GB.html",
+  "sectors": [
+    {
+      "id": "DSB", "name": "Suvarnabhumi Departure (RWY 19/20L/20R)", "floorFt": 0, "ceilingFt": 10000,
+      "boundary": [{ "dms": "134342N 1003526E" }, { "dms": "133710N 1005941E" }, { "dms": "131625N 1005412E" }, { "dms": "132330N 1002757E" }]
+    },
+    {
+      "id": "ARR", "name": "Suvarnabhumi Arrival (RWY 19/20L/20R)", "floorFt": 0, "ceilingFt": 10000,
+      "boundary": [{ "dms": "141329N 1004424E" }, { "dms": "140858N 1010135E" }, { "dms": "133427N 1005206E" }, { "dms": "133856N 1003457E" }],
+      "exclude": ["DSB"]
+    },
+    {
+      "id": "DDP", "name": "Don Mueang Departure (RWY 21L/R)", "floorFt": 0, "ceilingFt": 8000,
+      "boundary": [
+        { "dms": "135248N 1003849E" },
+        { "dms": "133023N 1003030E" },
+        { "arc": { "centre": { "dms": "135452N 1003620E" }, "radiusNm": 25, "dir": "cw" }, "to": { "dms": "140012N 1001111E" } }
+      ],
+      "exclude": ["ARR", "DSB"]
+    },
+    {
+      "id": "DAR", "name": "Don Mueang Arrival (RWY 21L/R)", "floorFt": 0, "ceilingFt": 8000,
+      "boundary": [
+        { "dms": "135248N 1003849E" },
+        { "dms": "140012N 1001111E" },
+        { "arc": { "centre": { "dms": "135452N 1003620E" }, "radiusNm": 25, "dir": "cw" }, "to": { "dms": "141715N 1004755E" } }
+      ],
+      "exclude": ["ARR"]
+    },
+    {
+      "id": "APE1", "name": "Approach East 1", "floorFt": 0, "ceilingFt": 16000,
+      "boundary": [
+        { "dms": "135452N 1003620E" },
+        { "radial": "BKK", "deg": 35, "nm": 51.3 },
+        { "arc": { "centre": { "dms": "135452N 1003620E" }, "radiusNm": 50, "dir": "cw" }, "to": { "radial": "BKK", "deg": 100, "nm": 50.3 } }
+      ],
+      "exclude": ["ARR", "DAR", "DSB", "DDP"]
+    },
+    {
+      "id": "APE2", "name": "Approach East 2", "floorFt": 0, "ceilingFt": 16000,
+      "boundary": [
+        { "dms": "135452N 1003620E" },
+        { "radial": "BKK", "deg": 100, "nm": 50.3 },
+        { "arc": { "centre": { "dms": "135452N 1003620E" }, "radiusNm": 50, "dir": "cw" }, "to": { "radial": "BKK", "deg": 155, "nm": 49.1 } }
+      ],
+      "exclude": ["ARR", "DAR", "DSB", "DDP"]
+    },
+    {
+      "id": "APS1", "name": "Approach South 1", "floorFt": 0, "ceilingFt": 16000,
+      "boundary": [
+        { "dms": "135452N 1003620E" },
+        { "radial": "BKK", "deg": 155, "nm": 49.1 },
+        { "arc": { "centre": { "dms": "135452N 1003620E" }, "radiusNm": 50, "dir": "cw" }, "to": { "radial": "BKK", "deg": 193, "nm": 48.7 } },
+        { "radial": "BKK", "deg": 250, "nm": 11.8 }
+      ],
+      "exclude": ["ARR", "DAR", "DSB", "DDP"]
+    },
+    {
+      "id": "APS2", "name": "Approach South 2", "floorFt": 0, "ceilingFt": 16000,
+      "boundary": [
+        { "radial": "BKK", "deg": 250, "nm": 11.8 },
+        { "radial": "BKK", "deg": 193, "nm": 48.7 },
+        { "arc": { "centre": { "dms": "135452N 1003620E" }, "radiusNm": 50, "dir": "cw" }, "to": { "radial": "BKK", "deg": 250, "nm": 49.1 } }
+      ],
+      "exclude": ["DAR", "DDP"]
+    },
+    {
+      "id": "APW", "name": "Approach West", "floorFt": 0, "ceilingFt": 16000,
+      "boundary": [
+        { "dms": "135452N 1003620E" },
+        { "radial": "BKK", "deg": 250, "nm": 49.1 },
+        { "arc": { "centre": { "dms": "135452N 1003620E" }, "radiusNm": 50, "dir": "cw" }, "to": { "radial": "BKK", "deg": 325, "nm": 50.7 } }
+      ],
+      "exclude": ["DAR", "DDP"]
+    },
+    {
+      "id": "APN", "name": "Approach North", "floorFt": 0, "ceilingFt": 16000,
+      "boundary": [
+        { "dms": "135452N 1003620E" },
+        { "radial": "BKK", "deg": 325, "nm": 50.7 },
+        { "arc": { "centre": { "dms": "135452N 1003620E" }, "radiusNm": 50, "dir": "cw" }, "to": { "radial": "BKK", "deg": 35, "nm": 51.3 } }
+      ],
+      "exclude": ["ARR", "DAR", "DSB", "DDP"]
+    },
+    {
+      "id": "3N", "name": "Bangkok ACC Sector 3N", "floorFt": 0, "ceilingFt": 46000,
+      "boundary": [{ "dms": "135506N 1003548E" }, { "dms": "162305N 0985437E" }, { "dms": "161748N 1004455E" }, { "dms": "161329N 1020259E" }],
+      "exclude": ["APE1", "APE2", "APS1", "APS2", "APW", "APN", "ARR", "DSB", "DAR", "DDP"]
+    },
+    {
+      "id": "6N", "name": "Bangkok ACC Sector 6N", "floorFt": 0, "ceilingFt": 46000,
+      "boundary": [{ "dms": "135506N 1003548E" }, { "dms": "161329N 1020259E" }, { "dms": "160948N 1030000E" }, { "dms": "141302N 1030000E" }],
+      "exclude": ["APE1", "APE2", "APS1", "APS2", "APW", "APN", "ARR", "DSB", "DAR", "DDP"]
+    }
+  ]
+}

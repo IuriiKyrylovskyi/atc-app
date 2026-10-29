@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Downloads OurAirports airports.csv + runways.csv (public domain) into
+ * Downloads OurAirports airports.csv, runways.csv and navaids.csv (public domain) into
  * db/ourairports/. The mirror on GitHub Pages is updated nightly.
  *
  *   pnpm data:ourairports
@@ -14,7 +14,7 @@ const OUT = path.join(ROOT, 'db', 'ourairports');
 const BASE = 'https://davidmegginson.github.io/ourairports-data/';
 
 mkdirSync(OUT, { recursive: true });
-for (const file of ['airports.csv', 'runways.csv']) {
+for (const file of ['airports.csv', 'runways.csv', 'navaids.csv']) {
   const res = await fetch(BASE + file);
   if (!res.ok) throw new Error(`${file}: HTTP ${res.status}`);
   const text = await res.text();

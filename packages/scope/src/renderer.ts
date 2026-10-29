@@ -60,7 +60,7 @@ export const DECLUTTER = {
 export type Ctx2D = Pick<
   CanvasRenderingContext2D,
   | 'setTransform' | 'fillRect' | 'beginPath' | 'moveTo' | 'lineTo' | 'stroke' | 'fill' | 'arc'
-  | 'closePath' | 'fillText' | 'measureText' | 'setLineDash' | 'save' | 'restore'
+  | 'closePath' | 'fillText' | 'measureText' | 'setLineDash' | 'save' | 'restore' | 'clip'
 > & {
   fillStyle: string | CanvasGradient | CanvasPattern;
   strokeStyle: string | CanvasGradient | CanvasPattern;
@@ -110,8 +110,13 @@ export class ScopeRenderer {
   constructor(private readonly ctx: Ctx2D) {}
 
   private polygon(view: ScopeView, poly: readonly LocalXY[]): void {
+    this.ctx.beginPath();
+    this.subpath(view, poly);
+  }
+
+  /** Adds a closed polygon to the current path. */
+  private subpath(view: ScopeView, poly: readonly LocalXY[]): void {
     const ctx = this.ctx;
-    ctx.beginPath();
     poly.forEach((p, i) => {
       const s = view.toScreen(p);
       if (i === 0) ctx.moveTo(s.x, s.y);
@@ -152,9 +157,15 @@ export class ScopeRenderer {
         ctx.fill();
       }
       if (active) {
+        // Inside the active outline, minus the sectors carved out of it.
+        ctx.save();
+        this.polygon(view, active.polygon);
+        ctx.clip();
         ctx.fillStyle = P.activeSector;
         this.polygon(view, active.polygon);
-        ctx.fill();
+        for (const hole of active.excluded ?? []) this.subpath(view, hole.polygon);
+        ctx.fill('evenodd');
+        ctx.restore();
       }
     }
 

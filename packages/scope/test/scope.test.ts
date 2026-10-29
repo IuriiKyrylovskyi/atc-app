@@ -136,7 +136,7 @@ function fakeCtx(): FakeCtx {
   const ctx = {
     texts, dashes, fills, rects,
     setTransform: noop, beginPath: noop, moveTo: noop, lineTo: noop, stroke: noop,
-    arc: noop, closePath: noop, save: noop, restore: noop,
+    arc: noop, closePath: noop, save: noop, restore: noop, clip: noop,
     fill: () => void fills.push(String(ctx.fillStyle)),
     fillRect: () => void rects.push(String(ctx.fillStyle)),
     setLineDash: (d: number[]) => void dashes.push([...d]),
@@ -405,5 +405,33 @@ describe('ATC systems, sectors, ownership, routes', () => {
     expect(hitTestDetail(res.hits, s)?.kind).toBe('target');
     expect(hitTestDetail(res.hits, { x: s.x + 30, y: s.y - 30 })?.kind).toBe('label');
     expect(hitTest(res.hits, s)).toBe('TST1');
+  });
+});
+
+describe('sectors with excluded areas', () => {
+  const box = (nm: number) => [0, 90, 180, 270].map((b) => destination(REF, b + 45, nm * Math.SQRT2 * M_PER_NM));
+  const holed: AirspacePack = {
+    ...pack,
+    areas: [
+      { id: 'OUTER', kind: 'sector', polygon: box(20), floorFt: 0, ceilingFt: 16000, exclude: ['INNER'] },
+      { id: 'INNER', kind: 'sector', polygon: box(5), floorFt: 0, ceilingFt: 10000 },
+    ],
+  };
+  const map = buildVideoMap(holed);
+  const outer = map.sectors.find((s) => s.id === 'OUTER')!;
+  const xy = (nm: number) => map.projection.toLocal(destination(REF, 90, nm * M_PER_NM));
+
+  it('carves the excluded volume out of the sector, and only within its vertical limits', () => {
+    expect(outer.excluded?.map((e) => e.id)).toEqual(['INNER']);
+    expect(inVolume(outer, xy(10), 5000)).toBe(true);
+    expect(inVolume(outer, xy(1), 5000)).toBe(false); // inside INNER
+    expect(inVolume(outer, xy(1), 12000)).toBe(true); // above INNER's ceiling
+    expect(pointInPolygon(xy(1), outer.polygon)).toBe(true);
+  });
+
+  it('fills the active sector with its hole (even-odd, clipped)', () => {
+    const ctx = fakeCtx();
+    new ScopeRenderer(ctx).draw(new ScopeView({ widthPx: 800, heightPx: 800, rangeNm: 30 }), map, undefined, GENERIC_SYSTEM, { activeSector: 'OUTER' });
+    expect(ctx.fills).toContain(GENERIC_SYSTEM.map.activeSector);
   });
 });

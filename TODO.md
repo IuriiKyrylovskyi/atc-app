@@ -76,6 +76,12 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [x] Control sectors in packs (`sectors` in pack definitions: polygon of fixes/points or wedge, floor/ceiling) → `areas` kind sector; NY: synthetic EWR / LGA / KEN SFC–170 + HIGH 170–330
 - [x] Active sector dropdown: sector fill + border, labels with vertical limits, traffic coloured owned / incoming (5 min look-ahead) / other, OWN / INC counts
 - [x] Speed vector with one dash per minute; click a track symbol: route with ETOs over each point
+- [x] Areas: New York / Kyiv / Bangkok dropdown (config/areas.ts) + sector dropdown per area; dev server on :5273
+- [x] Bangkok pack (`source: open`, `eaip: th`): points / navaids / routes from the Thai eAIP, airports + runways from OurAirports, TMA sectors (south flow) + ACC 3N / 6N transcribed from ENR 2.1 with radial/DME points, arcs and exclusions; devOnly (state AIP)
+- [x] Kyiv pack: OurAirports airports / runways / navaids only (no waypoints, routes, sectors yet)
+- [ ] Bangkok: north-flow sector variants, ACC sectors along the FIR border (needs FIR / border geometry), SIDs / STARs / ILS from AD 2
+- [ ] ⛔ Kyiv: waypoints, routes, TMA / ACC sectors — needs UkSATSE eAIP (ENR 2.1 / 3 / 4.4) or ARINC 424
+- [ ] ⛔ NY: real N90 / ZNY sector boundaries (not public); ZNY ARTCC boundary + Class B from NASR
 - [ ] Real sector data (ANSP sectorisation), FIR / neighbour boundaries, handoffs and track assumption
 - [ ] ⛔ Decide official sector source: AIP ENR 2.1 importer (e.g. Thailand Bangkok ACC, 12 sectors, public eAIP) and/or the chosen TMA's AIP; needs FIR boundary following, DME arcs, multi-volume sectors, AIP copyright check
 - [ ] EUROCONTROL ERC GeoPDF extractor (dev / validation only): read the `ATFM Sector` / `FIR/UIR` layers of ERC-06 (`charts/`), convert through the GeoPDF viewport (EC Lambert Conformal Conic) to lat/lon, label sectors from `ATFM Sector Annotation`; compare with AIP data. Ask EUROCONTROL for written permission before any product use

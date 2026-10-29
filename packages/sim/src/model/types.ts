@@ -127,6 +127,8 @@ export interface Area {
   floorFt: number;
   /** Upper limit (exclusive), ft. */
   ceilingFt: number;
+  /** Other areas carved out of this one (AIP "excluding ARR sector, …"). */
+  exclude?: string[];
 }
 
 export interface MvaArea {

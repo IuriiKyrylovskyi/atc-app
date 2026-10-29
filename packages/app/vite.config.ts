@@ -41,9 +41,17 @@ const airspacePacks = (): Plugin => ({
   },
   generateBundle() {
     if (!existsSync(PACKS_DIR)) return;
+    // Packs built from state AIP data (devOnly) never ship: drop them and their manifest entries.
+    const manifestFile = path.join(PACKS_DIR, 'manifest.json');
+    const manifest = existsSync(manifestFile)
+      ? (JSON.parse(readFileSync(manifestFile, 'utf8')) as { packs: Record<string, { file: string; devOnly?: boolean }> })
+      : { packs: {} };
+    const devFiles = new Set(Object.values(manifest.packs).filter((p) => p.devOnly).map((p) => p.file));
+    for (const [id, p] of Object.entries(manifest.packs)) if (p.devOnly) delete manifest.packs[id];
     for (const name of readdirSync(PACKS_DIR)) {
-      if (!name.endsWith('.json') || name.endsWith('.diff.json')) continue;
-      this.emitFile({ type: 'asset', fileName: `packs/${name}`, source: readFileSync(path.join(PACKS_DIR, name)) });
+      if (!name.endsWith('.json') || name.endsWith('.diff.json') || devFiles.has(name)) continue;
+      const source = name === 'manifest.json' ? JSON.stringify(manifest, null, 2) : readFileSync(path.join(PACKS_DIR, name));
+      this.emitFile({ type: 'asset', fileName: `packs/${name}`, source });
     }
   },
 });
@@ -118,7 +126,8 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      port: 5173,
+      port: 5273,
+      strictPort: true,
     },
   };
 });

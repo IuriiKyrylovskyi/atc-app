@@ -119,6 +119,11 @@ export function buildVideoMap(pack: AirspacePack, options: VideoMapOptions = {})
       labelAt: centroid(polygon),
     };
   });
+  // "Excluding ARR sector, DSB sector": link the carved-out areas.
+  (pack.areas ?? []).forEach((a, i) => {
+    const excluded = (a.exclude ?? []).flatMap((id) => areas.filter((x) => x.id === id));
+    if (excluded.length) areas[i]!.excluded = excluded;
+  });
 
   return {
     packId: pack.meta.id,
