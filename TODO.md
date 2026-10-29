@@ -82,7 +82,8 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [x] Bangkok ACC: all 12 sectors (1N–6N, 1S–6S); FIR-border stretches from VATSpy `VTBB` (`along` boundary steps), 2S split (FL270+) with 3S / 6S lower parts
 - [ ] Bangkok: north-flow sector variants, SIDs / STARs / ILS from AD 2
 - [ ] ⛔ Kyiv: waypoints, routes, TMA / ACC sectors — needs UkSATSE eAIP (ENR 2.1 / 3 / 4.4) or ARINC 424
-- [ ] ⛔ NY: real N90 / ZNY sector boundaries (not public); ZNY ARTCC boundary + Class B from NASR
+- [x] NY airspace from CIFP (UC / UR): Class B (16 sub-areas), Class C / D, restricted / prohibited / warning / alert / SFRA within 100 NM; sectors N90 (Class B volume as a stand-in) and ZNY (VATSpy KZNY domestic border, minus N90)
+- [ ] ⛔ NY: real N90 / ZNY sectorisation (not public); NASR ARTCC boundary to replace VATSpy KZNY
 - [ ] Real sector data (ANSP sectorisation), FIR / neighbour boundaries, handoffs and track assumption
 - [ ] ⛔ Decide official sector source: AIP ENR 2.1 importer (e.g. Thailand Bangkok ACC, 12 sectors, public eAIP) and/or the chosen TMA's AIP; needs FIR boundary following, DME arcs, multi-volume sectors, AIP copyright check
 - [ ] EUROCONTROL ERC GeoPDF extractor (dev / validation only): read the `ATFM Sector` / `FIR/UIR` layers of ERC-06 (`charts/`), convert through the GeoPDF viewport (EC Lambert Conformal Conic) to lat/lon, label sectors from `ATFM Sector Annotation`; compare with AIP data. Ask EUROCONTROL for written permission before any product use

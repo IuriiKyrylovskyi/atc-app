@@ -150,7 +150,11 @@ const oaDir = fileURLToPath(new URL('../../../db/ourairports/', import.meta.url)
 const edition = existsSync(eaipDir) ? readdirSync(eaipDir).filter((d) => /^\d{4}-/.test(d)).sort().pop() : undefined;
 const vatspyFile = fileURLToPath(new URL('../../../db/vatspy/Boundaries.geojson', import.meta.url));
 
-describe.skipIf(!edition || !existsSync(`${oaDir}airports.csv`) || !existsSync(vatspyFile))('Bangkok pack from the Thai eAIP (db/)', () => {
+const haveBangkok = !!edition && existsSync(`${oaDir}airports.csv`) && existsSync(vatspyFile);
+
+describe.skipIf(!haveBangkok)('Bangkok pack from the Thai eAIP (db/)', () => {
+  // A skipped describe still runs its body to collect tests: read nothing then.
+  if (!haveBangkok) return;
   const page = (p: string) => readFileSync(`${eaipDir}${edition}/VT-${p}-en-GB.html`, 'utf8');
   const def = parsePackDefinition(JSON.parse(readFileSync(fileURLToPath(new URL('../../../packs/bangkok.pack.json', import.meta.url)), 'utf8')));
   const geo = JSON.parse(readFileSync(vatspyFile, 'utf8')) as {

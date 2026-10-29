@@ -159,15 +159,21 @@ export class ScopeRenderer {
         }
       }
       if (active) {
-        // Inside each active outline, minus the sectors carved out of it.
+        // Inside each active outline, minus every volume of the sectors carved out
+        // of it (painted back with the airspace fill: holes may overlap each other).
+        const holes = (active.excluded ?? []).flatMap(volumesOf);
         for (const v of volumesOf(active)) {
           ctx.save();
           this.polygon(view, v.polygon);
           ctx.clip();
           ctx.fillStyle = P.activeSector;
           this.polygon(view, v.polygon);
-          for (const hole of active.excluded ?? []) this.subpath(view, hole.polygon);
-          ctx.fill('evenodd');
+          ctx.fill();
+          ctx.fillStyle = P.airspace;
+          for (const hole of holes) {
+            this.polygon(view, hole.polygon);
+            ctx.fill();
+          }
           ctx.restore();
         }
       }

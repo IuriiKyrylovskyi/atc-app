@@ -1,9 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { angleDiffDeg, distanceM, type AirspacePack } from '@atc-app/sim';
+import { angleDiffDeg, courseTo, distanceM, distanceNm, type AirspacePack } from '@atc-app/sim';
 import {
+  importCifpAirspace,
   importCifpArea,
+  parseAirspaceLimit,
   parseAltitude,
   parseArincLat,
   parseArincLon,
@@ -162,5 +164,75 @@ describe.skipIf(!existsSync(fullFile))('CIFP importer (full AIRAC file in db/faa
     expect(v.errors).toEqual([]);
     expect(v.warnings).toEqual([]);
     expect(ms).toBeLessThan(15_000);
+  });
+
+  it('imports the New York Class B (16 sub-areas) and the restricted / warning areas around it', () => {
+    const rec = readCifpRecords(readFileSync(fullFile, 'latin1'));
+    const { areas, warnings } = importCifpAirspace(rec, { reference: { lat: 40.6398, lon: -73.7787 }, radiusNm: 60 });
+    expect(warnings).toEqual([]);
+    const classB = areas.filter((a) => a.id.startsWith('KJFK B-'));
+    expect(classB).toHaveLength(16);
+    expect(classB.every((a) => a.kind === 'TMA' && a.ceilingFt === 7000)).toBe(true);
+    expect(areas.find((a) => a.id === 'KJFK B-A')).toMatchObject({ name: 'Class B NEW YORK AREA A', floorFt: 0 });
+    expect(areas.find((a) => a.id === 'KTEB D')).toMatchObject({ kind: 'CTR' });
+    expect(areas.find((a) => a.id === 'W105A')).toMatchObject({ kind: 'danger', name: 'W-105A' });
+    // JFK itself is inside the surface area.
+    const lat = (a: { polygon: { lat: number }[] }) => a.polygon.map((p) => p.lat);
+    const a = classB[0]!;
+    expect(Math.min(...lat(a))).toBeLessThan(40.64);
+    expect(Math.max(...lat(a))).toBeGreaterThan(40.64);
+  });
+});
+
+// ── Airspace records (UC / UR), synthetic but laid out as the FAA codes them ──
+const record = (fields: [number, string][]) => {
+  const a = Array<string>(132).fill(' ');
+  for (const [c, v] of fields) for (let i = 0; i < v.length; i++) a[c - 1 + i] = v[i]!;
+  return a.join('');
+};
+const ORIGIN = { lat: 40, lon: -74 };
+const classD = record([
+  [1, 'SUSAUCK6ZKTST PAD  A00100'], [31, 'CE'], [52, 'N40000000W074000000'], [71, '0044'],
+  [82, 'GND  A02500M'], [94, 'TESTVILLE'],
+]);
+const restricted = (seq: string, via: string, pos: string, extra: [number, string][] = []) =>
+  record([[1, `SUSAURK6R1234      A${seq}0`], [31, via], [33, pos], ...extra]);
+const airspaceFile = [
+  classD,
+  restricted('0010', 'G ', 'N40100000W074100000', [[82, 'GND  M'], [88, 'UNLTDM'], [94, 'R-1234']]),
+  restricted('0020', 'R ', 'N40100000W074000000', [[52, 'N40000000W074000000'], [71, '0100']]),
+  restricted('0030', 'G ', 'N40000000W073465670'),
+  restricted('0040', 'GE', 'N40000000W074100000'),
+  record([[1, 'SUSAURK6R9999      A00100'], [31, 'CE'], [52, 'N10000000W074000000'], [71, '0050'], [82, 'GND  M01000M']]),
+].join('\n');
+
+describe('CIFP airspace (UC / UR)', () => {
+  it('decodes vertical limits', () => {
+    expect(parseAirspaceLimit('GND  A', -1)).toBe(0);
+    expect(parseAirspaceLimit('07000M', -1)).toBe(7000);
+    expect(parseAirspaceLimit('UNLTDM', -1)).toBe(60000);
+    expect(parseAirspaceLimit('', -1)).toBe(-1);
+  });
+
+  const { areas } = importCifpAirspace(readCifpRecords(airspaceFile), { reference: ORIGIN, radiusNm: 50 });
+
+  it('builds circles, lines and clockwise arcs, and keeps only airspace near the reference', () => {
+    expect(areas.map((a) => a.id)).toEqual(['KTST D', 'R1234']);
+    const d = areas[0]!;
+    expect(d).toMatchObject({ kind: 'CTR', name: 'Class D TESTVILLE', floorFt: 0, ceilingFt: 2500 });
+    expect(d.polygon).toHaveLength(72);
+    for (const p of d.polygon) expect(distanceNm(ORIGIN, p)).toBeCloseTo(4.4, 2);
+
+    const r = areas[1]!;
+    expect(r).toMatchObject({ kind: 'restricted', name: 'R-1234', floorFt: 0, ceilingFt: 60000 });
+    // 4 published points + the arc from north to east densified every 5°.
+    const arc = r.polygon.slice(2, -2);
+    expect(arc.length).toBeGreaterThan(15);
+    for (const p of arc) {
+      expect(distanceNm(ORIGIN, p)).toBeCloseTo(10, 1);
+      const b = courseTo(ORIGIN, p);
+      expect(b).toBeGreaterThan(0);
+      expect(b).toBeLessThan(90);
+    }
   });
 });

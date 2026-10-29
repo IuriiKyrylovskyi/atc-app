@@ -6,7 +6,7 @@ derived artefacts belong in the repository.
 
 | Folder | Source | Licence | Update | Fetch |
 |---|---|---|---|---|
-| `faa-cifp/` | FAA Coded Instrument Flight Procedures (ARINC 424, file `FAACIFP18`) — US airports, runways, ILS, fixes, navaids, airways, SIDs/STARs/approaches | US Government work, public domain | every AIRAC cycle (28 days) | `pnpm data:cifp` (current cycle) · `pnpm data:cifp --next` |
+| `faa-cifp/` | FAA Coded Instrument Flight Procedures (ARINC 424, file `FAACIFP18`) — US airports, runways, ILS, fixes, navaids, airways, SIDs/STARs/approaches, controlled (Class B / C / D) and restrictive airspace | US Government work, public domain | every AIRAC cycle (28 days) | `pnpm data:cifp` (current cycle) · `pnpm data:cifp --next` |
 | `ourairports/` | OurAirports `airports.csv`, `runways.csv`, `navaids.csv` — airports worldwide, runway ends, VOR/DME/NDB; used for non-IFR airports, to cross-check CIFP runway thresholds, and as the navaid source for areas without AIP data (Kyiv) | Public domain | nightly upstream | `pnpm data:ourairports` |
 | `vatspy/` | VATSpy data project `Boundaries.geojson` — FIR / UIR borders worldwide, for AIP sector edges that run "along the FIR boundary" (Bangkok `VTBB`); `SOURCE` holds the upstream commit | CC BY-SA 4.0 (credit; packs using it share-alike) | on upstream changes | `pnpm data:vatspy` |
 | `eaip-th/<edition>/` | Thailand eAIP ENR 2.1, 3.1, 3.3, 4.1, 4.4 (EUROCONTROL eAIP HTML) — points, navaids, routes for the Bangkok pack | State copyright: development only | every AIRAC cycle | `pnpm data:eaip th` (latest effective) · `--edition YYYY-MM-DD` |

@@ -11,6 +11,8 @@ import {
   sectorArea,
   sectorDefinitionSchema,
   summarizeDiff,
+  vatspyRings,
+  vatspySource,
   type PackDefinition,
 } from '../src';
 
@@ -43,6 +45,33 @@ describe('sector definitions', () => {
     expect(() => sectorArea(parse({ id: 'X', name: 'X', floorFt: 0, ceilingFt: 1, polygon: ['CTR', 'NOPE', 'NORTH'] }), lookup)).toThrow(/unknown point NOPE/);
     expect(sectorDefinitionSchema.safeParse({ id: 'B', name: 'B', floorFt: 5, ceilingFt: 1, polygon: ['CTR', 'NORTH', 'CTR'] }).success).toBe(false);
     expect(sectorDefinitionSchema.safeParse({ id: 'B', name: 'B', floorFt: 0, ceilingFt: 1 }).success).toBe(false);
+  });
+
+  it('takes a whole FIR border, or the union of airspace areas clipped to the sector limits', () => {
+    const ring = [C, destination(C, 90, 20 * 1852), destination(C, 180, 20 * 1852), C];
+    const fir = sectorArea(parse({ id: 'ZNY', name: 'ZNY', floorFt: 0, ceilingFt: 60000, border: 'KZNY', exclude: ['N90'] }), lookup, undefined, (id) =>
+      id === 'KZNY' ? ring : undefined
+    );
+    expect(fir.polygon).toEqual(ring.slice(0, -1)); // GeoJSON closing point dropped
+    expect(fir.exclude).toEqual(['N90']);
+
+    const box = (nm: number) => [0, 90, 180, 270].map((b) => destination(C, b, nm * 1852));
+    const areas = new Map([
+      ['B-A', { id: 'B-A', kind: 'TMA' as const, polygon: box(5), floorFt: 0, ceilingFt: 7000 }],
+      ['B-B', { id: 'B-B', kind: 'TMA' as const, polygon: box(10), floorFt: 1500, ceilingFt: 7000 }],
+      ['B-C', { id: 'B-C', kind: 'TMA' as const, polygon: box(15), floorFt: 6000, ceilingFt: 7000 }],
+    ]);
+    const n90 = sectorArea(
+      parse({ id: 'N90', name: 'N90', floorFt: 0, ceilingFt: 5000, areas: ['B-A', 'B-B', 'B-C'] }),
+      lookup,
+      undefined,
+      undefined,
+      (id) => areas.get(id)
+    );
+    expect(n90).toMatchObject({ polygon: box(5), floorFt: 0, ceilingFt: 5000 });
+    expect(n90.parts).toEqual([{ polygon: box(10), floorFt: 1500, ceilingFt: 5000 }]); // B-C is above 5000 ft
+    expect(() => sectorArea(parse({ id: 'X', name: 'X', floorFt: 0, ceilingFt: 1, areas: ['NOPE'] }), lookup)).toThrow(/unknown area NOPE/);
+    expect(sectorDefinitionSchema.safeParse({ id: 'X', name: 'X', floorFt: 0, ceilingFt: 1, border: 'A', areas: ['B'] }).success).toBe(false);
   });
 });
 
@@ -178,9 +207,11 @@ describe('diffPacks', () => {
 
 const fullCifp = fileURLToPath(new URL('../../../db/faa-cifp/FAACIFP18', import.meta.url));
 const oaDir = fileURLToPath(new URL('../../../db/ourairports/', import.meta.url));
-const haveFull = existsSync(fullCifp) && existsSync(`${oaDir}airports.csv`);
+const vatspyFile = fileURLToPath(new URL('../../../db/vatspy/Boundaries.geojson', import.meta.url));
+const haveFull = existsSync(fullCifp) && existsSync(`${oaDir}airports.csv`) && existsSync(vatspyFile);
 
 describe.skipIf(!haveFull)('buildPack on the downloaded sources (db/)', () => {
+  const rings = haveFull ? vatspyRings(readFileSync(vatspyFile, 'utf8')) : new Map();
   it('builds packs/ny-tma.pack.json: valid, CIFP thresholds within metres of OurAirports', () => {
     const def = parsePackDefinition(
       JSON.parse(readFileSync(fileURLToPath(new URL('../../../packs/ny-tma.pack.json', import.meta.url)), 'utf8'))
@@ -192,6 +223,7 @@ describe.skipIf(!haveFull)('buildPack on the downloaded sources (db/)', () => {
         runwaysCsv: readFileSync(`${oaDir}runways.csv`, 'utf8'),
         retrieved: RETRIEVED,
       },
+      borders: { ring: (id) => rings.get(id), source: vatspySource('test', RETRIEVED) },
       retrieved: RETRIEVED,
     });
     expect(r.validation.errors).toEqual([]);
@@ -201,5 +233,14 @@ describe.skipIf(!haveFull)('buildPack on the downloaded sources (db/)', () => {
     // every CIFP runway threshold lies within 1 km of OurAirports' (gross-error guard)
     expect(r.crossCheck!.maxDiffM!).toBeLessThan(1000);
     expect(distanceM(r.pack.meta.reference, r.pack.airports[0]!.arp)).toBe(0);
+
+    // Sectors first, then CIFP airspace. N90 = the 16 Class B sub-areas; ZNY = KZNY minus N90.
+    const areas = r.pack.areas!;
+    expect(areas.slice(0, 2).map((a) => a.id)).toEqual(['N90', 'ZNY']);
+    expect(areas[0]!.parts).toHaveLength(15);
+    expect(areas[1]).toMatchObject({ exclude: ['N90'], floorFt: 0, ceilingFt: 60000 });
+    expect(areas.filter((a) => a.id.startsWith('KJFK B-'))).toHaveLength(16);
+    expect(areas.some((a) => a.kind === 'restricted')).toBe(true);
+    expect(r.pack.meta.sources.map((s) => s.licence)).toContain('CC-BY-SA-4.0');
   });
 });

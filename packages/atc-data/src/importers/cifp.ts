@@ -3,11 +3,13 @@
  *
  * Reads the fixed-width 132-column records and produces pack content for an area:
  * airports (PA), runways (PG) with ILS (PI), terminal + enroute waypoints (PC, EA),
- * VHF navaids (D), NDBs (DB, PN), airways (ER) and SIDs / STARs / approaches
- * (PD / PE / PF). Column positions were verified against AIRAC 2611 data.
+ * VHF navaids (D), NDBs (DB, PN), airways (ER), SIDs / STARs / approaches
+ * (PD / PE / PF) and airspace: controlled (UC — Class B / C / D) and restrictive
+ * (UR — restricted, prohibited, warning, alert, MOA, SFRA). Column positions were
+ * verified against AIRAC 2611 data.
  *
- * Not imported yet: controlled / restrictive airspace (UC / UR — boundaries with
- * arcs), MSA, holding patterns (EP), company routes.
+ * Not imported yet: MSA, holding patterns (EP), company routes. CIFP has no
+ * ARTCC / FIR boundaries (those are in NASR, or VATSpy for the simulator).
  *
  * Coverage: US airports with instrument procedures. For other countries the same
  * ARINC 424 parser can read any provider's file (see PAID-ALT notes in index.ts:
@@ -25,6 +27,8 @@ import {
   type Airport,
   type Airway,
   type AltitudeConstraint,
+  type Area,
+  type AreaKind,
   type Fix,
   type FixKind,
   type LatLon,
@@ -175,6 +179,26 @@ interface RawAirwayPoint {
   maxAltFt: number | null;
 }
 
+/** One boundary point of a UC / UR airspace (records of one volume share `key`). */
+interface RawAirspacePoint {
+  /** Section + ICAO code + type + centre / designation + multiple code. */
+  key: string;
+  airspaceClass: CifpAirspaceClass;
+  /** Class B / C / D: the airport ("KJFK"); restrictive: type + designation ("R5002A", "W105A"). */
+  designation: string;
+  /** Sub-area letter ("A" for NEW YORK AREA A); blank for a single volume. */
+  multiple: string;
+  seq: number;
+  /** Boundary via: G / H line, R / L clockwise / counter-clockwise arc, C circle; then E = last point. */
+  via: string;
+  pos: LatLon | null;
+  arcOrigin: LatLon | null;
+  arcNm: number | null;
+  lower: string;
+  upper: string;
+  name: string;
+}
+
 export interface CifpRecords {
   airac: string | null;
   airports: Map<string, RawAirport>;
@@ -184,6 +208,7 @@ export interface CifpRecords {
   fixes: Map<string, Fix[]>;
   legs: RawLeg[];
   airways: RawAirwayPoint[];
+  airspace: RawAirspacePoint[];
 }
 
 function addFix(map: Map<string, Fix[]>, fix: Fix): void {
@@ -202,6 +227,7 @@ export function readCifpRecords(text: string): CifpRecords {
     fixes: new Map(),
     legs: [],
     airways: [],
+    airspace: [],
   };
 
   for (const raw of text.split('\n')) {
@@ -307,6 +333,158 @@ export function readCifpRecords(text: string): CifpRecords {
         const pos = parsePos(line, 33, 42);
         if (pos) addFix(out.fixes, { id, kind: 'ndb', pos });
       }
+    } else if (section === 'U') {
+      const sub = col(line, 6, 6);
+      const via = col(line, 31, 32);
+      // Continuation records (time of operation, controlling agency) carry no boundary.
+      if ((sub !== 'C' && sub !== 'R') || via.trim() === '') continue;
+      const type = col(line, 9, 9);
+      const controlled = sub === 'C';
+      out.airspace.push({
+        key: col(line, 5, 20),
+        airspaceClass: controlled ? (CONTROLLED_CLASS[type] ?? 'other') : (RESTRICTIVE_CLASS[type] ?? 'other'),
+        // Restrictive: type letter + designation ("R" + "5002A"); U (SFRA, …) has none.
+        designation: controlled ? colT(line, 10, 14) : `${type === 'U' ? '' : type}${colT(line, 10, 19)}`,
+        multiple: colT(line, 20, 20),
+        seq: int(col(line, 21, 24)) ?? 0,
+        via,
+        pos: parsePos(line, 33, 42),
+        arcOrigin: parsePos(line, 52, 61),
+        arcNm: int(col(line, 71, 74)) === null ? null : int(col(line, 71, 74))! / 10,
+        lower: colT(line, 82, 87),
+        upper: colT(line, 88, 93),
+        name: colT(line, 94, 123),
+      });
+    }
+  }
+  return out;
+}
+
+// ─── Airspace (UC / UR) ──────────────────────────────────────────────────────
+
+export type CifpAirspaceClass =
+  | 'classB' | 'classC' | 'classD' | 'restricted' | 'prohibited' | 'warning' | 'alert' | 'moa' | 'other';
+
+/** UC airspace type (column 9) as the FAA codes it. */
+const CONTROLLED_CLASS: Record<string, CifpAirspaceClass> = { T: 'classB', A: 'classC', Z: 'classD' };
+/** UR restrictive type (column 9); U = special flight rules / national security areas. */
+const RESTRICTIVE_CLASS: Record<string, CifpAirspaceClass> = { R: 'restricted', P: 'prohibited', W: 'warning', A: 'alert', M: 'moa' };
+
+const AREA_KIND: Record<CifpAirspaceClass, AreaKind> = {
+  classB: 'TMA',
+  classC: 'TMA',
+  classD: 'CTR',
+  restricted: 'restricted',
+  prohibited: 'prohibited',
+  warning: 'danger',
+  alert: 'danger',
+  moa: 'TSA',
+  other: 'restricted',
+};
+
+const CLASS_LABEL: Partial<Record<CifpAirspaceClass, string>> = { classB: 'Class B', classC: 'Class C', classD: 'Class D' };
+
+/** "UNLTD" and the like: shown as FL600. */
+const UNLIMITED_FT = 60000;
+/** Arcs and circles get a point every this many degrees. */
+const AIRSPACE_ARC_STEP_DEG = 5;
+
+/**
+ * "GND  M" → 0, "07000M" → 7000, "UNLTDM" → 60000; the last character is the
+ * unit (M = MSL, A = AGL). AGL limits are taken as MSL: the simulator has no
+ * terrain, and around New York the error is a few hundred feet at most.
+ */
+export function parseAirspaceLimit(v: string, fallback: number): number {
+  const value = v.slice(0, 5).trim();
+  if (value === 'GND') return 0;
+  if (value.startsWith('UNL')) return UNLIMITED_FT;
+  if (/^\d+$/.test(value)) return Number(value);
+  return fallback;
+}
+
+export interface CifpAirspaceOptions {
+  /** Pack reference point. */
+  reference: LatLon;
+  /** Airspace with any boundary point within this distance is imported. */
+  radiusNm: number;
+  /** Which kinds; default all. */
+  classes?: readonly CifpAirspaceClass[];
+}
+
+/**
+ * Controlled and restrictive airspace near the reference as pack areas: one area
+ * per volume (Class B sub-area, R-5002A, …) with its own vertical limits; arcs
+ * and circles are densified.
+ */
+export function importCifpAirspace(rec: CifpRecords, options: CifpAirspaceOptions): { areas: Area[]; warnings: string[] } {
+  const wanted = options.classes ? new Set(options.classes) : null;
+  const groups = new Map<string, RawAirspacePoint[]>();
+  for (const p of rec.airspace) {
+    if (wanted && !wanted.has(p.airspaceClass)) continue;
+    const g = groups.get(p.key);
+    if (g) g.push(p);
+    else groups.set(p.key, [p]);
+  }
+
+  const areas: Area[] = [];
+  const warnings: string[] = [];
+  const ids = new Set<string>();
+  // Sub-area letters only where a designation has several volumes.
+  const volumes = new Map<string, number>();
+  for (const [p] of groups.values()) volumes.set(p!.key.slice(0, 15), (volumes.get(p!.key.slice(0, 15)) ?? 0) + 1);
+  for (const points of groups.values()) {
+    points.sort((a, b) => a.seq - b.seq);
+    const first = points[0]!;
+    const polygon = airspaceRing(points);
+    if (polygon.length < 3) {
+      warnings.push(`CIFP airspace ${first.designation} ${first.multiple}: fewer than 3 boundary points — skipped`);
+      continue;
+    }
+    if (!polygon.some((p) => distanceNm(options.reference, p) <= options.radiusNm)) continue;
+
+    const label = CLASS_LABEL[first.airspaceClass];
+    // "KJFK B-A" (Class B area A), "KTEB D", "R5002A"; a letter only where a designation has several volumes.
+    const sub = first.multiple && volumes.get(first.key.slice(0, 15))! > 1 ? `-${first.multiple}` : '';
+    let id = label ? `${first.designation} ${first.airspaceClass.slice(-1)}${sub}` : `${first.designation}${sub}`;
+    for (let n = 2; ids.has(id); n++) id = `${id.replace(/#\d+$/, '')}#${n}`;
+    ids.add(id);
+    const name = first.name || first.designation;
+    areas.push({
+      id,
+      kind: AREA_KIND[first.airspaceClass],
+      name: label ? `${label} ${name}` : name,
+      polygon,
+      floorFt: parseAirspaceLimit(first.lower, 0),
+      ceilingFt: parseAirspaceLimit(first.upper, UNLIMITED_FT),
+    });
+  }
+  return { areas, warnings };
+}
+
+/** Boundary records of one volume → closed ring (closing point implied). */
+function airspaceRing(points: readonly RawAirspacePoint[]): LatLon[] {
+  const out: LatLon[] = [];
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i]!;
+    const kind = p.via[0];
+    if (kind === 'C') {
+      if (!p.arcOrigin || !p.arcNm) continue;
+      for (let b = 0; b < 360; b += AIRSPACE_ARC_STEP_DEG) out.push(destination(p.arcOrigin, b, p.arcNm * 1852));
+      continue;
+    }
+    if (!p.pos) continue;
+    out.push(p.pos);
+    if ((kind === 'R' || kind === 'L') && p.arcOrigin) {
+      // Arc from this point to the next one (or back to the first after the last).
+      const next = p.via[1] === 'E' ? points[0]! : points[i + 1];
+      const to = next?.pos;
+      if (!to) continue;
+      const b0 = courseTo(p.arcOrigin, p.pos);
+      const b1 = courseTo(p.arcOrigin, to);
+      const span = kind === 'R' ? (b1 - b0 + 360) % 360 : -((b0 - b1 + 360) % 360);
+      const nm = p.arcNm ?? distanceNm(p.arcOrigin, p.pos);
+      const n = Math.max(1, Math.ceil(Math.abs(span) / AIRSPACE_ARC_STEP_DEG));
+      for (let k = 1; k < n; k++) out.push(destination(p.arcOrigin, b0 + (span * k) / n, nm * 1852));
     }
   }
   return out;

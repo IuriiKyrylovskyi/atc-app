@@ -6,7 +6,7 @@
     "KLGA",
     "KEWR"
   ],
-  "radiusNm": 60,
+  "radiusNm": 100,
   "vfrAirports": {
     "radiusNm": 40,
     "types": [
@@ -14,35 +14,27 @@
       "medium_airport"
     ]
   },
-  "sectorsSource": "NY sector definitions (atc-app, synthetic: wedges around KJFK, not the real N90/ZNY boundaries)",
+  "airspace": { "radiusNm": 100 },
+  "boundaries": "vatspy",
+  "sectorsSource": "NY sectors (atc-app): N90 = the New York Class B volume from FAA CIFP as a stand-in (the real N90 sectorisation is not published); ZNY = New York Center domestic border from VATSpy (KZNY), minus N90",
   "sectors": [
     {
-      "id": "EWR",
-      "name": "Newark",
+      "id": "N90",
+      "name": "New York Approach (Class B volume)",
       "floorFt": 0,
-      "ceilingFt": 17000,
-      "wedge": { "centre": "KJFK", "fromDeg": 210, "toDeg": 330, "outerNm": 45 }
+      "ceilingFt": 7000,
+      "areas": [
+        "KJFK B-A", "KJFK B-B", "KJFK B-C", "KJFK B-D", "KJFK B-E", "KJFK B-F", "KJFK B-G", "KJFK B-H",
+        "KJFK B-I", "KJFK B-J", "KJFK B-K", "KJFK B-L", "KJFK B-M", "KJFK B-N", "KJFK B-O", "KJFK B-P"
+      ]
     },
     {
-      "id": "LGA",
-      "name": "LaGuardia",
+      "id": "ZNY",
+      "name": "New York Center",
       "floorFt": 0,
-      "ceilingFt": 17000,
-      "wedge": { "centre": "KJFK", "fromDeg": 330, "toDeg": 90, "outerNm": 45 }
-    },
-    {
-      "id": "KEN",
-      "name": "Kennedy",
-      "floorFt": 0,
-      "ceilingFt": 17000,
-      "wedge": { "centre": "KJFK", "fromDeg": 90, "toDeg": 210, "outerNm": 45 }
-    },
-    {
-      "id": "HIGH",
-      "name": "NY High",
-      "floorFt": 17000,
-      "ceilingFt": 33000,
-      "wedge": { "centre": "KJFK", "fromDeg": 0, "toDeg": 360, "outerNm": 45 }
+      "ceilingFt": 60000,
+      "border": "KZNY",
+      "exclude": ["N90"]
     }
   ]
 }

@@ -25,7 +25,7 @@ import {
   type PackSource,
   type Runway,
 } from '@atc-app/sim';
-import { importCifpArea, readCifpRecords, type CifpRecords } from '../importers/cifp';
+import { importCifpAirspace, importCifpArea, readCifpRecords, type CifpRecords } from '../importers/cifp';
 import { importOurAirports, importOurAirportsNavaids, type OurAirportsType } from '../importers/ourairports';
 import { importEaipNavaids, importEaipPoints, importEaipRoutes, parseDms } from '../importers/eaip';
 import { runwayGeometryIssues, validatePack, type ValidationResult } from '../validate';
@@ -36,6 +36,8 @@ export interface BuildInputs {
   /** FAACIFP18 text or records already read (to share one parse across packs). */
   cifp: string | CifpRecords;
   ourAirports?: { airportsCsv: string; runwaysCsv: string; retrieved: string };
+  /** FIR / ARTCC borders for `along` / `border` sector shapes (definition `boundaries: "vatspy"`). */
+  borders?: BorderSource;
   /** ISO date the CIFP file was downloaded. */
   retrieved: string;
 }
@@ -213,17 +215,22 @@ export function buildPack(def: PackDefinition, inputs: BuildInputs, options: Bui
     airways: cifp.airways,
     procedures: cifp.procedures,
   };
-  addSectors(def, pack, inputs.retrieved);
+  if (def.airspace) {
+    const a = importCifpAirspace(rec, { reference, radiusNm: def.airspace.radiusNm, ...(def.airspace.classes ? { classes: def.airspace.classes } : {}) });
+    pack.areas = a.areas;
+    warnings.push(...a.warnings);
+  }
+  addSectors(def, pack, inputs.retrieved, inputs.borders);
   return { pack, validation: validatePack(pack), crossCheck, warnings };
 }
 
-/** Builds the definition's sectors into the pack (with their own source entry). */
-/** FIR borders by id (outer ring, lat/lon) for `along` boundary steps, and where they come from. */
+/** FIR borders by id (outer ring, lat/lon) for `along` / `border` sector shapes, and where they come from. */
 export interface BorderSource {
   ring(id: string): LatLon[] | undefined;
   source: PackSource;
 }
 
+/** Builds the definition's sectors into the pack (with their own source entry), ahead of other areas. */
 function addSectors(def: PackDefinition, pack: AirspacePack, retrieved: string, borders?: BorderSource): void {
   if (!def.sectors?.length) return;
   const lookup = (id: string): LatLon | undefined =>
@@ -234,7 +241,9 @@ function addSectors(def: PackDefinition, pack: AirspacePack, retrieved: string, 
     usedBorders = true;
     return borders?.ring(id);
   };
-  pack.areas = def.sectors.map((s) => sectorArea(s, lookup, at, ring));
+  const others = pack.areas ?? [];
+  const area = (id: string) => others.find((a) => a.id === id);
+  pack.areas = [...def.sectors.map((s) => sectorArea(s, lookup, at, ring, area)), ...others];
   pack.meta.sources.push({
     name: def.sectorsSource ?? `${def.id} sector definitions (atc-app, synthetic)`,
     licence: def.sectorsLicence ?? 'CC0-1.0',
@@ -350,7 +359,8 @@ export function sectorArea(
   s: SectorDefinition,
   lookup: (id: string) => LatLon | undefined,
   date = new Date(),
-  border: (id: string) => LatLon[] | undefined = () => undefined
+  border: (id: string) => LatLon[] | undefined = () => undefined,
+  area: (id: string) => Area | undefined = () => undefined
 ): Area {
   const at = (id: string) => {
     const p = lookup(id);
@@ -358,7 +368,33 @@ export function sectorArea(
     return p;
   };
   let polygon: LatLon[];
-  if (s.polygon) {
+  if (s.areas) {
+    // Each area's own limits, clipped to the sector's; areas outside them drop out.
+    const volumes = s.areas.flatMap((id) => {
+      const a = area(id);
+      if (!a) throw new Error(`sector ${s.id}: unknown area ${id} (definition "airspace")`);
+      const floorFt = Math.max(a.floorFt, s.floorFt);
+      const ceilingFt = Math.min(a.ceilingFt, s.ceilingFt);
+      return floorFt < ceilingFt ? [{ polygon: a.polygon, floorFt, ceilingFt }] : [];
+    });
+    if (!volumes.length) throw new Error(`sector ${s.id}: no area within ${s.floorFt}–${s.ceilingFt} ft`);
+    const [main, ...rest] = volumes;
+    return {
+      id: s.id,
+      kind: 'sector',
+      name: s.name,
+      polygon: main!.polygon,
+      floorFt: main!.floorFt,
+      ceilingFt: main!.ceilingFt,
+      ...(s.exclude?.length ? { exclude: s.exclude } : {}),
+      ...(rest.length ? { parts: rest } : {}),
+    };
+  }
+  if (s.border) {
+    const ring = border(s.border);
+    if (!ring) throw new Error(`sector ${s.id}: no border "${s.border}" (definition "boundaries" / pnpm data:vatspy)`);
+    polygon = closedRingOpen(ring);
+  } else if (s.polygon) {
     polygon = s.polygon.map((p) => (typeof p === 'string' ? at(p) : p));
   } else if (s.boundary) {
     polygon = boundaryPolygon(s.id, s.boundary, at, date, border);
@@ -392,6 +428,13 @@ export function sectorArea(
         }
       : {}),
   };
+}
+
+/** A ring without its repeated closing point (GeoJSON repeats the first point). */
+function closedRingOpen(ring: readonly LatLon[]): LatLon[] {
+  const a = ring[0];
+  const z = ring[ring.length - 1];
+  return a && z && ring.length > 3 && a.lat === z.lat && a.lon === z.lon ? ring.slice(0, -1) : [...ring];
 }
 
 /**
@@ -489,7 +532,7 @@ function nearestOnRing(ring: readonly LatLon[], p: LatLon): { i: number; t: numb
  * the border source (VATSpy is community-drawn, typically within 0–5 NM).
  */
 export function alongBorder(ring: readonly LatLon[], from: LatLon, to: LatLon, dir: 'cw' | 'ccw'): LatLon[] {
-  const r = ring.length > 1 && ring[0]!.lat === ring[ring.length - 1]!.lat && ring[0]!.lon === ring[ring.length - 1]!.lon ? ring.slice(0, -1) : [...ring];
+  const r = closedRingOpen(ring);
   const n = r.length;
   const forward = (dir === 'cw') === (signedArea(r) < 0);
   const a = nearestOnRing(r, from);

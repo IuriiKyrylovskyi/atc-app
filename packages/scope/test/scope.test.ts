@@ -429,10 +429,12 @@ describe('sectors with excluded areas', () => {
     expect(pointInPolygon(xy(1), outer.polygon)).toBe(true);
   });
 
-  it('fills the active sector with its hole (even-odd, clipped)', () => {
+  it('fills the active sector, then paints its hole back (clipped)', () => {
     const ctx = fakeCtx();
     new ScopeRenderer(ctx).draw(new ScopeView({ widthPx: 800, heightPx: 800, rangeNm: 30 }), map, undefined, GENERIC_SYSTEM, { activeSector: 'OUTER' });
-    expect(ctx.fills).toContain(GENERIC_SYSTEM.map.activeSector);
+    const i = ctx.fills.indexOf(GENERIC_SYSTEM.map.activeSector);
+    expect(i).toBeGreaterThan(-1);
+    expect(ctx.fills[i + 1]).toBe(GENERIC_SYSTEM.map.airspace);
   });
 });
 
