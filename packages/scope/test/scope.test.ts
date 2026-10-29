@@ -4,6 +4,7 @@ import {
   buildVideoMap,
   conflictLabel,
   dataBlockLines,
+  dataBlockPlacement,
   DECLUTTER,
   DEFAULT_TRAFFIC_OPTIONS,
   findSystem,
@@ -251,6 +252,33 @@ describe('traffic', () => {
     pic.setLeader('DAL1192', 1);
     const moved = new ScopeRenderer(fakeCtx()).drawTraffic(view, pic.list(), DEFAULT_TRAFFIC_OPTIONS);
     expect(hitTest(moved.hits, { x: target.x - 40, y: target.y + 25 })).toBe('DAL1192');
+  });
+
+  it('keeps a dragged data block where it was dropped, relative to its target', () => {
+    const s = { x: 100, y: 100 };
+    // Dropped 60 px right, 10 px above: leader runs to the block's left edge.
+    const right = dataBlockPlacement(s, 9, { x: 60, y: -10 }, 50, 39);
+    expect(right).toMatchObject({ x: 160, y: 90, leader: { to: { x: 158, y: 100 } } });
+    expect(right.leader!.from.x).toBeCloseTo(105.5, 9);
+    expect(right.leader!.from.y).toBeCloseTo(100, 9);
+    // Dropped on the target itself: no leader.
+    expect(dataBlockPlacement(s, 9, { x: -10, y: -10 }, 50, 39).leader).toBeUndefined();
+
+    const pic = new TrafficPicture(map.projection);
+    pic.update(snap(0, [aircraft()]));
+    const view = new ScopeView({ widthPx: 1000, heightPx: 800, rangeNm: 20 });
+    pic.setLabelOffset('DAL1192', { x: -120, y: 60 });
+    const target = view.toScreen(pic.get('DAL1192')!.xy);
+    const dragged = new ScopeRenderer(fakeCtx()).drawTraffic(view, pic.list(), DEFAULT_TRAFFIC_OPTIONS);
+    expect(hitTestDetail(dragged.hits, { x: target.x - 115, y: target.y + 65 })).toMatchObject({ callsign: 'DAL1192', kind: 'label' });
+    // The block follows its target to the next sweep.
+    pic.update(snap(4.8, [aircraft({ pos: destination(REF, 90, 2 * M_PER_NM) })]));
+    const next = view.toScreen(pic.get('DAL1192')!.xy);
+    const swept = new ScopeRenderer(fakeCtx()).drawTraffic(view, pic.list(), DEFAULT_TRAFFIC_OPTIONS);
+    expect(hitTestDetail(swept.hits, { x: next.x - 115, y: next.y + 65 })?.kind).toBe('label');
+    // A numpad direction takes the block back to a fixed leader.
+    pic.setLeader('DAL1192', 9);
+    expect(pic.get('DAL1192')!.labelOffset).toBeUndefined();
   });
 
   it('tags conflicting aircraft with a blinking CA and labels the pair', () => {
