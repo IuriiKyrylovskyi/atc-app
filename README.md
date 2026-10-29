@@ -193,8 +193,8 @@ Navigate: **Intro → Menu → Play Fields → Airfields → (select airport) �
 
 ```bash
 pnpm dev            # Web + Electron (default)
-pnpm dev:app        # Web only
-pnpm dev:electron   # Electron only
+pnpm dev:app        # Web only, http://localhost:5273
+pnpm dev:electron   # Electron only, its own Vite on :5274
 pnpm dev:android    # Build + run on Android
 pnpm dev:ios        # Build + run on iOS
 pnpm dev:mobile     # Auto-detect mobile platform

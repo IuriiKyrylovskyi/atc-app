@@ -35,17 +35,25 @@ pnpm install
 pnpm dev
 ```
 
+Each gets its own Vite dev server: web on **:5273**, Electron on **:5274**, so
+either can run alone and both can run at once.
+
 ### Web only (Vite dev server on :5273)
 
 ```bash
 pnpm dev:app
 ```
 
-### Electron only
+### Electron only (Vite dev server on :5274)
 
 ```bash
 pnpm dev:electron
 ```
+
+Starts Vite on :5274 and opens Electron once it answers
+(`scripts/wait-for-url.mjs`). Electron runs the built main process
+(`packages/electron/dist/main.js`): after changing `packages/electron/src`, run
+`pnpm build:electron` first.
 
 ### Mobile — auto-detects platform (macOS → iOS, Windows → Android)
 
