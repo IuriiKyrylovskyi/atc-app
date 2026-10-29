@@ -138,6 +138,10 @@ screenshots/
 db/**
 !db/README.md
 
+# Downloaded reference charts, copyrighted (see charts/README.md)
+charts/**
+!charts/README.md
+
 # Built packs (pnpm pack:build)
 packs/dist/
 

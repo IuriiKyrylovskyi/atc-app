@@ -193,6 +193,7 @@ source of truth for coordinates.
 |---|---|---|---|
 | **FAA CIFP** (ARINC 424) + **NASR** | All US procedures, fixes, airways, airspace, runways | Free | US Government work, public domain — OK |
 | **FAA d-TPP** (chart PDFs) | US approach/SID/STAR plates | Free | Public domain — OK to display |
+| **FAA IFR Enroute charts** (Aeronautical Information Services, digital products) | IFR Enroute **Low** (L-01…L-36) / **High** (H-01…H-12) US, Alaska low/high, **Area** charts, Hawaii/Pacific, oceanic route charts (NARC, PORC, WATRS), Caribbean low/high, planning chart; each as **PDF** and **GeoTIFF** (zip) | Free | US Government work, public domain — OK to display, georeference and trace (validation of CIFP/NASR geometry, background layers). 56-day cycle; next edition online 19 days before effective date. Some products end from May 2026 (VIS 26-02 charting notice) — check before relying on one |
 | **OurAirports** | Airports + runway thresholds worldwide | Free | Public domain — OK (quality varies; verify) |
 | National eAIPs (EU/UK/other) | Full national data + chart PDFs | Free to view | Per state; Eurocontrol EAD Basic allows **non-commercial** redistribution only; commercial access via paid EAD B2B or per-state agreement — **quote** |
 | **OpenAIP** | Airspace, navaids, airports worldwide | Free | CC BY-NC — commercial use needs a licence — **quote** |
@@ -201,6 +202,7 @@ source of truth for coordinates.
 | **Customer-supplied** (Academy) | School's own AIP/charts | €0 | School's own licence; data stays in their tenant (§14) |
 | **AIS of Ukraine** (UkSATSE, aisukraine.net) | eAIP (+ AMDT/SUP/AIC/NOTAM list), charts, **ARINC 424 database download** (login-gated) | Annual subscription: eAIP **$1,200/yr** non-resident (UAH 32,400 resident), VFR guide $186, PIB $150 (AIC A 03/25) | "All rights reserved"; subscription is an access licence, not redistribution — consumer use needs a written agreement (pubs@uksatse.aero). Academy: school's own subscription as customer-supplied data. ARINC 424 format fits our CIFP importer. Civil airspace closed since 2022 ⇒ no live traffic there, synthetic/recorded scenarios only |
 | aip.aero (AIP:Aero) | Aggregator: links to official AIP/charts; JSON API with aerodrome data (coords, runways, frequencies, chart links, METAR/NOTAM) | API €0 / €29 / €99 / from €249 per month | Publishes no AIP data itself and states no data licence; no fixes, airways or procedure geometry ⇒ not a navdata source; at most a chart-link index |
+| **EUROCONTROL Cartography** (Network Manager) | Pan-European charts from EAD-SDO + NM environment data: **ERC** upper/lower regional charts (13 sheets, 1:1 500 000, e.g. ERC-06 Central Europe – Ukraine), ERN route network, DCT, FIR/UIR overviews, FRA, MUAC sectorisation. ERC = **GeoPDF** (ArcGIS, ISO 32000 geospatial viewport, EC Lambert Conformal Conic N42°/N57°) with separate layers: **ATFM Sector** (+ names / FL bands), FIR/UIR, ATS Route, Designated Point, Navaid, SUA, FRA | Free download | "For information purposes only"; chart notice: "© EUROCONTROL … no part may be reproduced or used except as authorized by written permission". ⇒ Development reference / validation only; any geometry or rendering in the product needs **written permission** from EUROCONTROL. ATFM sectors "may not be as precise as the sector descriptions used by ATC". ERC update cycle: 2× a year from June 2026 |
 
 **Decision (proposal):**
 
@@ -368,15 +370,23 @@ access terms to confirm).
   system they train on — *Generic* (our default, STARS-like data block), *Selex (Alenia)*
   (modelled on a Selex ES / Leonardo en-route display in service in Ukraine: grey map, white
   "+" tracks, `CALLSIGN / AFL CFL / G<gs>` labels, cyan incoming, boxed extended label of the
-  selected track) and *Indra* (approximation of SACTA / iTEC, to be calibrated from a reference
-  photo). A profile is data only: map palette, sector / area styling, track symbol, ownership
+  selected track) and *Indra* (modelled on an iTEC / SACTA screenshot: navy map on slate, teal
+  unit boundary, diamond fixes, green own traffic `NEXT / CALLSIGN GS / AFL CFL`, white two-line
+  others). A profile is data only: map palette, sector / area styling, track symbol, ownership
   colours and label layouts — adding a system (Thales TopSky, Frequentis…) is one object.
 - **Sectors and ownership:** packs carry control sectors (lateral polygon + floor / ceiling);
   the controller selects the active sector, which is filled and outlined, and traffic is
   coloured *owned* (inside its volume), *incoming* (predicted to enter within 5 min, cleared
   level respected) or *other*. Ownership is geometric until handoffs / track assumption arrive
-  with multi-sector sessions (Phase 3). Public sector boundaries are rare (FAA TRACON sectors
-  are internal), so pack definitions author them; the NY pack ships synthetic wedges.
+  with multi-sector sessions (Phase 3). The NY pack ships synthetic wedges.
+- **Official sector boundaries:** where a state publishes them, ACC sectors are in **AIP ENR 2.1**
+  (ATS airspace): name, lateral limits (coordinate chain, DME arcs, "along FIR boundary"),
+  vertical limits, unit, call sign, frequencies — e.g. Thailand lists all 12 Bangkok ACC sectors
+  (1N–6N, 1S–6S), including multi-volume sectors (6S = GND–FL460 area + GND–FL270 area). Many
+  states (incl. the USA for TRACON / ARTCC sectors) do not publish sectors; the FAA publishes
+  ARTCC boundaries (NASR) only. Importer needs: coordinate / arc / FIR-boundary-following
+  parser, FIR boundaries from the same ENR 2.1, sectors as several volumes, and the state's AIP
+  copyright terms checked before shipping (AIP text is state copyright, not open data).
 - **Track tools:** speed vectors are drawn one dash per minute; clicking a track symbol shows
   its remaining route (direct fix, route fixes, runway when cleared for an approach) with ETOs
   at the current ground speed.
@@ -756,6 +766,10 @@ Each phase ends with something playable and testable.
 - Eurocontrol EAD Basic — https://www.ead.eurocontrol.int/fwf-eadbasic/public/static/home.faces
 - AIS of Ukraine publications + 2026 prices (AIC A 03/25) — https://www.aisukraine.net/publications/eng/publ(eng).htm · https://aisukraine.net/current/UK_Circ_2025_A_03_en.pdf
 - AIP:Aero (aggregator, partner API) — https://aip.aero/ua/en/ · https://aip.aero/partners/ · https://aip.aero/terms/
+- EUROCONTROL Cartography (ERC / ERN / DCT / FIR-UIR / FRA / MUAC charts; local copies in `charts/`) — https://www.eurocontrol.int/service/cartography · library https://www.eurocontrol.int/library
+- Official ACC sector boundaries in AIP ENR 2.1, example Thailand (Bangkok ACC, 12 sectors) — https://aip.caat.or.th/2026-07-09-AIRAC/html/eAIP/VT-ENR-2.1-en-GB.html · Latvia (Riga ACC sectors) — https://ais.lgs.lv/eAIPfiles/2025_001_23-JAN-2025/data/2025-01-23/html/eAIP/EV-ENR-2.1-en-GB.html
+- FAA IFR Enroute charts (PDF + GeoTIFF, 56-day) — https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/ifr/ · files `https://aeronav.faa.gov/enroute/<MM-DD-YYYY>/enr_l01.zip` (GeoTIFF), `…/delus1.zip` (PDF) · product schedule https://aeronav.faa.gov/content/aeronav/DOLES/Product_Schedule.pdf · terminations (VIS 26-02) https://www.faa.gov/air_traffic/flight_info/aeronav/safety_alerts/media/VIS_26-02_CN_Product_Terminations_eff_May_2026.pdf
+- FAA ARTCC boundaries (NASR) — https://www.faa.gov/air_traffic/flight_info/aeronav/acf/media/Briefings/ARTCC_Boundary_Data.pdf · https://www.faa.gov/air_traffic/flight_info/aeronav/Aero_Data/Center_Surface_Boundaries
 - FAA SWIM / LADD obligations — https://www.faa.gov/air_traffic/technology/swim/swift/swift-meeting-presentation-18-5-5-2022
 - STT pricing — https://www.cartesia.ai/learn/openai-whisper-api-pricing · https://convertaudiototext.com/blog/speech-to-text-api-pricing-2026 · https://www.digitalapplied.com/blog/openai-gpt-transcribe-stt-model-comparison-2026
 - TTS pricing — https://cloud.google.com/text-to-speech/pricing · https://azure.microsoft.com/pricing/details/cognitive-services/speech-services
