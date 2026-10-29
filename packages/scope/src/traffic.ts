@@ -33,6 +33,12 @@ export function leaderVector(dir: LeaderDirection): { dx: number; dy: number } {
   return { dx: col / len, dy: row / len };
 }
 
+/** Data block top-left relative to its target, screen px (y grows downwards). */
+export interface LabelOffset {
+  x: number;
+  y: number;
+}
+
 export interface TrafficTrack {
   callsign: string;
   ac: AircraftState;
@@ -40,6 +46,11 @@ export interface TrafficTrack {
   /** Previous sweep positions, newest first. */
   history: LocalXY[];
   leader: LeaderDirection;
+  /**
+   * Data block dragged by hand: its top-left corner relative to the target,
+   * screen px. Overrides `leader` until a numpad direction is set again.
+   */
+  labelOffset?: LabelOffset;
   /** Seen from the active sector (all "owned" when no sector is active). */
   ownership: Ownership;
   /** Sector the aircraft is in, if any. */
@@ -116,7 +127,15 @@ export class TrafficPicture {
 
   setLeader(callsign: string, dir: LeaderDirection): void {
     const t = this.tracks.get(callsign);
-    if (t) t.leader = dir;
+    if (!t) return;
+    t.leader = dir;
+    delete t.labelOffset;
+  }
+
+  /** Places the data block where it was dragged to. */
+  setLabelOffset(callsign: string, offset: LabelOffset): void {
+    const t = this.tracks.get(callsign);
+    if (t) t.labelOffset = { x: offset.x, y: offset.y };
   }
 
   /** Shows / hides the route with ETOs; returns the new state. */

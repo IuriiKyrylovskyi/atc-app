@@ -359,11 +359,16 @@ function cycleVector(): void {
   requestDraw();
 }
 
-// ── Interaction: drag to pan, click to select, wheel / pinch to zoom, keys ─
+// ── Interaction: drag to pan, drag a data block to move it, click to select,
+//    wheel / pinch to zoom, keys ─────────────────────────────────────────────
 const pointers = new Map<number, { x: number; y: number }>();
 let pinchDistance = 0;
 let pressAt: { x: number; y: number } | null = null;
 const CLICK_SLOP_PX = 4;
+/** Data block held with the primary button: its callsign and the grab point inside it, px. */
+let labelDrag: { callsign: string; grab: { x: number; y: number } } | null = null;
+/** Pointer over a data block (grab cursor) or dragging one (grabbing). */
+const labelHover = ref<'grab' | 'grabbing' | null>(null);
 
 const local = (e: PointerEvent | WheelEvent) => {
   const r = canvas.value!.getBoundingClientRect();
@@ -375,6 +380,14 @@ function onPointerDown(e: PointerEvent): void {
   const p = local(e);
   pointers.set(e.pointerId, p);
   pressAt = pointers.size === 1 ? p : null;
+  labelDrag = null;
+  if (pointers.size === 1 && e.button === 0) {
+    const hit = hitTestDetail(hits, p);
+    if (hit?.kind === 'label') {
+      labelDrag = { callsign: hit.callsign, grab: { x: p.x - hit.x, y: p.y - hit.y } };
+      labelHover.value = 'grabbing';
+    }
+  }
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     pinchDistance = Math.hypot(a!.x - b!.x, a!.y - b!.y);
@@ -385,10 +398,23 @@ function onPointerMove(e: PointerEvent): void {
   const p = local(e);
   if (map.value) cursor.value = map.value.projection.toGeo(view.toLocal(p));
   const prev = pointers.get(e.pointerId);
-  if (!prev) return;
+  if (!prev) {
+    labelHover.value = hitTestDetail(hits, p)?.kind === 'label' ? 'grab' : null;
+    return;
+  }
   pointers.set(e.pointerId, p);
   if (pressAt && Math.hypot(p.x - pressAt.x, p.y - pressAt.y) > CLICK_SLOP_PX) pressAt = null;
-  if (pointers.size === 1) {
+  if (labelDrag && pointers.size === 1) {
+    // Within the click slop the press may still be a click that selects.
+    const track = pressAt ? undefined : picture?.get(labelDrag.callsign);
+    if (track) {
+      const s = view.toScreen(track.xy);
+      picture!.setLabelOffset(labelDrag.callsign, {
+        x: p.x - labelDrag.grab.x - s.x,
+        y: p.y - labelDrag.grab.y - s.y,
+      });
+    }
+  } else if (pointers.size === 1) {
     view.panBy(p.x - prev.x, p.y - prev.y);
   } else if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
@@ -409,6 +435,8 @@ function onPointerUp(e: PointerEvent): void {
     if (hit && e.pointerType === 'mouse') commandInput.value?.focus();
   }
   pressAt = null;
+  if (labelDrag) labelHover.value = 'grab';
+  labelDrag = null;
   pointers.delete(e.pointerId);
   pinchDistance = 0;
 }
@@ -680,11 +708,12 @@ onBeforeUnmount(() => {
     <canvas
       ref="canvas"
       class="scope-canvas"
+      :style="labelHover ? { cursor: labelHover } : undefined"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
       @pointercancel="onPointerUp"
-      @pointerleave="cursor = null"
+      @pointerleave="(cursor = null), (labelHover = null)"
       @wheel="onWheel"
     />
 

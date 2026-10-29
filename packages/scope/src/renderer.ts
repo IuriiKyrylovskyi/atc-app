@@ -16,7 +16,7 @@
 import { M_PER_NM, type Conflict, type LocalXY } from '@atc-app/sim';
 import type { ScopeView, ScreenXY } from './view';
 import type { MapFix, VideoMap } from './videomap';
-import { leaderVector, type TrafficTrack } from './traffic';
+import { leaderVector, type LabelOffset, type LeaderDirection, type TrafficTrack } from './traffic';
 import { clockTime, verticalLimits, volumesOf, type MapArea, type RoutePath } from './sectors';
 import { GENERIC_SYSTEM, type ScopeSystem } from './systems';
 
@@ -590,19 +590,15 @@ export class ScopeRenderer {
       const w = Math.max(...lines.map((l) => ctx.measureText(l).width));
       if (alert && opts.blinkOn) lines[0] = `${lines[0]} CA`;
       const h = lineH * lines.length;
-      const { dx, dy } = leaderVector(t.leader);
-      const start = { x: s.x + dx * (TARGET_RADIUS_PX + 2), y: s.y + dy * (TARGET_RADIUS_PX + 2) };
-      const end = { x: s.x + dx * LEADER_PX, y: s.y + dy * LEADER_PX };
-      ctx.strokeStyle = colour;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(start.x, start.y);
-      ctx.lineTo(end.x, end.y);
-      ctx.stroke();
-
-      // Block corner nearest the target sits at the leader end.
-      const bx = dx > 0.1 ? end.x + 2 : dx < -0.1 ? end.x - 2 - w : end.x - w / 2;
-      const by = dy > 0.1 ? end.y : dy < -0.1 ? end.y - h : end.y - h / 2;
+      const { x: bx, y: by, leader } = dataBlockPlacement(s, t.leader, t.labelOffset, w, h);
+      if (leader) {
+        ctx.strokeStyle = colour;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(leader.from.x, leader.from.y);
+        ctx.lineTo(leader.to.x, leader.to.y);
+        ctx.stroke();
+      }
       const box = selected ? T.selectedBox : null;
       if (box) {
         const pad = 3;
@@ -678,6 +674,49 @@ export function conflictLabel(c: Conflict): string {
 }
 
 /** Screen-space box (CSS px) that selects an aircraft when clicked. */
+export interface DataBlockPlacement {
+  /** Block top-left, screen px. */
+  x: number;
+  y: number;
+  /** Leader line, absent when the block sits on the target. */
+  leader?: { from: ScreenXY; to: ScreenXY };
+}
+
+/**
+ * Where a data block of `w` × `h` px goes around its target at `s`: at the
+ * end of a fixed-length leader in a numpad direction, or where it was dragged
+ * (`offset`), with the leader then drawn to the nearest point of the block.
+ */
+export function dataBlockPlacement(
+  s: ScreenXY,
+  dir: LeaderDirection,
+  offset: LabelOffset | undefined,
+  w: number,
+  h: number
+): DataBlockPlacement {
+  const gap = TARGET_RADIUS_PX + 2;
+  if (offset) {
+    const x = s.x + offset.x;
+    const y = s.y + offset.y;
+    const pad = 2;
+    const to = {
+      x: Math.min(Math.max(s.x, x - pad), x + w + pad),
+      y: Math.min(Math.max(s.y, y - pad), y + h + pad),
+    };
+    const len = Math.hypot(to.x - s.x, to.y - s.y);
+    if (len <= gap + 2) return { x, y };
+    const from = { x: s.x + ((to.x - s.x) / len) * gap, y: s.y + ((to.y - s.y) / len) * gap };
+    return { x, y, leader: { from, to } };
+  }
+  const { dx, dy } = leaderVector(dir);
+  const from = { x: s.x + dx * gap, y: s.y + dy * gap };
+  const to = { x: s.x + dx * LEADER_PX, y: s.y + dy * LEADER_PX };
+  // Block corner nearest the target sits at the leader end.
+  const x = dx > 0.1 ? to.x + 2 : dx < -0.1 ? to.x - 2 - w : to.x - w / 2;
+  const y = dy > 0.1 ? to.y : dy < -0.1 ? to.y - h : to.y - h / 2;
+  return { x, y, leader: { from, to } };
+}
+
 export interface TrafficHit {
   callsign: string;
   /** The track symbol, or its label. */
