@@ -79,7 +79,8 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [x] Areas: New York / Kyiv / Bangkok dropdown (config/areas.ts) + sector dropdown per area; dev server on :5273
 - [x] Bangkok pack (`source: open`, `eaip: th`): points / navaids / routes from the Thai eAIP, airports + runways from OurAirports, TMA sectors (south flow) + ACC 3N / 6N transcribed from ENR 2.1 with radial/DME points, arcs and exclusions; devOnly (state AIP)
 - [x] Kyiv pack: OurAirports airports / runways / navaids only (no waypoints, routes, sectors yet)
-- [ ] Bangkok: north-flow sector variants, ACC sectors along the FIR border (needs FIR / border geometry), SIDs / STARs / ILS from AD 2
+- [x] Bangkok ACC: all 12 sectors (1N–6N, 1S–6S); FIR-border stretches from VATSpy `VTBB` (`along` boundary steps), 2S split (FL270+) with 3S / 6S lower parts
+- [ ] Bangkok: north-flow sector variants, SIDs / STARs / ILS from AD 2
 - [ ] ⛔ Kyiv: waypoints, routes, TMA / ACC sectors — needs UkSATSE eAIP (ENR 2.1 / 3 / 4.4) or ARINC 424
 - [ ] ⛔ NY: real N90 / ZNY sector boundaries (not public); ZNY ARTCC boundary + Class B from NASR
 - [ ] Real sector data (ANSP sectorisation), FIR / neighbour boundaries, handoffs and track assumption

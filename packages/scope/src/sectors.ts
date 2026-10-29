@@ -28,7 +28,18 @@ export interface MapArea {
   labelAt: LocalXY;
   /** Areas carved out of this one (resolved from the pack's `exclude` ids). */
   excluded?: MapArea[];
+  /** Further volumes of the same area (AIP "… and an area bounded by …, up to FL270"). */
+  parts?: MapAreaPart[];
 }
+
+export interface MapAreaPart {
+  polygon: LocalXY[];
+  floorFt: number;
+  ceilingFt: number;
+}
+
+/** Every lateral volume of an area: the main one, then its parts. */
+export const volumesOf = (area: MapArea): MapAreaPart[] => [area, ...(area.parts ?? [])];
 
 /** Area-weighted centroid of a simple polygon (vertex mean if degenerate). */
 export function centroid(poly: readonly LocalXY[]): LocalXY {
@@ -63,10 +74,15 @@ export function pointInPolygon(p: LocalXY, poly: readonly LocalXY[]): boolean {
   return inside;
 }
 
-/** Inside the volume: lateral polygon, floor inclusive, ceiling exclusive, minus excluded areas. */
+/**
+ * Inside the area: in its main volume or one of its parts (lateral polygon,
+ * floor inclusive, ceiling exclusive), and not in an excluded area.
+ */
 export function inVolume(area: MapArea, xy: LocalXY, altFt: number): boolean {
-  if (altFt < area.floorFt || altFt >= area.ceilingFt || !pointInPolygon(xy, area.polygon)) return false;
-  return !(area.excluded ?? []).some((e) => inVolume(e, xy, altFt));
+  const inside = volumesOf(area).some(
+    (v) => altFt >= v.floorFt && altFt < v.ceilingFt && pointInPolygon(xy, v.polygon)
+  );
+  return inside && !(area.excluded ?? []).some((e) => inVolume(e, xy, altFt));
 }
 
 /** How far ahead "incoming" looks, s, and the sample step. */

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { courseTo, declinationDeg, distanceNm, normDeg } from '@atc-app/sim';
 import {
   airacOf,
+  alongBorder,
   buildOpenPack,
   eaipRows,
   importEaipNavaids,
@@ -102,6 +103,34 @@ describe('AIP sector boundaries', () => {
     });
     expect(() => sectorArea(s, lookup, date)).toThrow(/arc needs a previous point/);
   });
+
+  // A 4 × 4° "FIR" drawn counter-clockwise (as GeoJSON may give it), corners on the degree.
+  const FIR = [
+    { lat: 10, lon: 100 }, { lat: 10, lon: 104 }, { lat: 14, lon: 104 }, { lat: 14, lon: 100 }, { lat: 10, lon: 100 },
+  ];
+
+  it('walks a FIR border clockwise or counter-clockwise between two points on it', () => {
+    const west = { lat: 12, lon: 100 };
+    const north = { lat: 14, lon: 102 };
+    // Clockwise from the west side to the north side: through the NW corner only.
+    expect(alongBorder(FIR, west, north, 'cw')).toEqual([{ lat: 14, lon: 100 }]);
+    // The other way round: SW, SE, NE corners.
+    expect(alongBorder(FIR, west, north, 'ccw')).toEqual([{ lat: 10, lon: 100 }, { lat: 10, lon: 104 }, { lat: 14, lon: 104 }]);
+    // Same side, no corner in between.
+    expect(alongBorder(FIR, west, { lat: 13, lon: 100 }, 'cw')).toEqual([]);
+  });
+
+  it('builds "along" steps and extra volumes (parts) from the border source', () => {
+    const s = sectorDefinitionSchema.parse({
+      id: 'NW', name: 'nw', floorFt: 0, ceilingFt: 46000,
+      boundary: [{ dms: '120000N 1000000E' }, { along: 'TEST', dir: 'cw', to: { dms: '140000N 1020000E' } }, { dms: '120000N 1020000E' }],
+      parts: [{ boundary: [{ dms: '100000N 1000000E' }, { dms: '110000N 1000000E' }, { dms: '110000N 1010000E' }], floorFt: 0, ceilingFt: 27000 }],
+    });
+    const a = sectorArea(s, lookup, date, (id) => (id === 'TEST' ? FIR : undefined));
+    expect(a.polygon).toEqual([{ lat: 12, lon: 100 }, { lat: 14, lon: 100 }, { lat: 14, lon: 102 }, { lat: 12, lon: 102 }]);
+    expect(a.parts).toEqual([{ polygon: [{ lat: 10, lon: 100 }, { lat: 11, lon: 100 }, { lat: 11, lon: 101 }], floorFt: 0, ceilingFt: 27000 }]);
+    expect(() => sectorArea(s, lookup, date)).toThrow(/no border "TEST"/);
+  });
 });
 
 describe('AIRAC cycles', () => {
@@ -119,10 +148,17 @@ describe('AIRAC cycles', () => {
 const eaipDir = fileURLToPath(new URL('../../../db/eaip-th/', import.meta.url));
 const oaDir = fileURLToPath(new URL('../../../db/ourairports/', import.meta.url));
 const edition = existsSync(eaipDir) ? readdirSync(eaipDir).filter((d) => /^\d{4}-/.test(d)).sort().pop() : undefined;
+const vatspyFile = fileURLToPath(new URL('../../../db/vatspy/Boundaries.geojson', import.meta.url));
 
-describe.skipIf(!edition || !existsSync(`${oaDir}airports.csv`))('Bangkok pack from the Thai eAIP (db/)', () => {
+describe.skipIf(!edition || !existsSync(`${oaDir}airports.csv`) || !existsSync(vatspyFile))('Bangkok pack from the Thai eAIP (db/)', () => {
   const page = (p: string) => readFileSync(`${eaipDir}${edition}/VT-${p}-en-GB.html`, 'utf8');
   const def = parsePackDefinition(JSON.parse(readFileSync(fileURLToPath(new URL('../../../packs/bangkok.pack.json', import.meta.url)), 'utf8')));
+  const geo = JSON.parse(readFileSync(vatspyFile, 'utf8')) as {
+    features: { properties: { id?: string }; geometry: { type: string; coordinates: number[][][][] } }[];
+  };
+  const vtbb = geo.features.find((f) => f.properties.id === 'VTBB')!;
+  const outer = (vtbb.geometry.type === 'Polygon' ? vtbb.geometry.coordinates[0]! : vtbb.geometry.coordinates[0]![0]!) as unknown as number[][];
+  const VTBB = outer.map(([lon, lat]) => ({ lat: lat!, lon: lon! }));
   const r = buildOpenPack(def, {
     ourAirports: {
       airportsCsv: readFileSync(`${oaDir}airports.csv`, 'utf8'),
@@ -130,6 +166,10 @@ describe.skipIf(!edition || !existsSync(`${oaDir}airports.csv`))('Bangkok pack f
       retrieved: edition!,
     },
     eaip: { edition: edition!, stateName: 'Thailand', url: '', enr31: page('ENR-3.1'), enr33: page('ENR-3.3'), enr41: page('ENR-4.1'), enr44: page('ENR-4.4') },
+    borders: {
+      ring: (id) => (id === 'VTBB' ? VTBB : undefined),
+      source: { name: 'VATSpy data project FIR borders', licence: 'CC-BY-SA-4.0', url: '', retrieved: edition! },
+    },
     retrieved: edition!,
   });
 
@@ -139,7 +179,32 @@ describe.skipIf(!edition || !existsSync(`${oaDir}airports.csv`))('Bangkok pack f
     expect(r.pack.airports.map((a) => a.icao)).toEqual(expect.arrayContaining(['VTBS', 'VTBD']));
     expect(r.pack.fixes.find((f) => f.id === 'BKK')).toMatchObject({ kind: 'vor' });
     expect(r.pack.airways!.some((a) => a.id === 'A1')).toBe(true);
-    expect(r.pack.areas!.map((a) => a.id)).toEqual(['DSB', 'ARR', 'DDP', 'DAR', 'APE1', 'APE2', 'APS1', 'APS2', 'APW', 'APN', '3N', '6N']);
+    expect(r.pack.areas!.map((a) => a.id)).toEqual([
+      'DSB', 'ARR', 'DDP', 'DAR', 'APE1', 'APE2', 'APS1', 'APS2', 'APW', 'APN',
+      '1N', '2N', '3N', '4N', '5N', '6N', '1S', '2S', '3S', '4S', '5S', '6S',
+    ]);
+    expect(r.pack.meta.sources.some((s) => s.licence === 'CC-BY-SA-4.0')).toBe(true);
+  });
+
+  it('tiles the FIR with the twelve ACC sectors at FL300 (along-border stretches from VATSpy)', () => {
+    // Planar area in NM², good enough to catch a sector walking the wrong way round the border.
+    const nm2 = (ring: readonly { lat: number; lon: number }[]) => {
+      let a = 0;
+      for (let i = 0; i < ring.length; i++) {
+        const p = ring[i]!;
+        const q = ring[(i + 1) % ring.length]!;
+        const k = Math.cos((((p.lat + q.lat) / 2) * Math.PI) / 180);
+        a += (p.lon * k * q.lat - q.lon * k * p.lat) * 3600;
+      }
+      return Math.abs(a / 2);
+    };
+    const acc = r.pack.areas!.filter((a) => /^\d[NS]$/.test(a.id) && a.floorFt <= 30000 && a.ceilingFt > 30000);
+    expect(acc).toHaveLength(12);
+    const sum = acc.reduce((s, a) => s + nm2(a.polygon), 0);
+    expect(sum / nm2(VTBB)).toBeGreaterThan(0.97);
+    expect(sum / nm2(VTBB)).toBeLessThan(1.03);
+    // Below FL270, 3S and 6S also take the 2S footprint.
+    for (const id of ['3S', '6S']) expect(r.pack.areas!.find((a) => a.id === id)!.parts).toHaveLength(1);
   });
 
   it('closes the TMA ring: the six approach pies meet on the 50 NM arc', () => {

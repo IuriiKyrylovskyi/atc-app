@@ -52,7 +52,8 @@
     "data:cifp": "node scripts/fetch-cifp.mjs",
     "data:ourairports": "node scripts/fetch-ourairports.mjs",
     "pack:build": "pnpm --filter @atc-app/atc-data pack:build",
-    "data:eaip": "node scripts/fetch-eaip.mjs"
+    "data:eaip": "node scripts/fetch-eaip.mjs",
+    "data:vatspy": "node scripts/fetch-vatspy.mjs"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",

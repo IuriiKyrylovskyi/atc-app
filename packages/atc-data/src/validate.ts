@@ -87,6 +87,12 @@ export function validatePack(input: unknown, options: ValidateOptions = {}): Val
       };
       (opt.allowUnpublishableLicences ? warnings : errors).push(issue);
     }
+    if (s.licence === 'CC-BY-SA-4.0') {
+      warnings.push({
+        path: `meta.sources.${i}.licence`,
+        message: 'CC BY-SA source: credit it and share the pack data under CC BY-SA 4.0',
+      });
+    }
     if (s.licence === 'ODbL-1.0') {
       warnings.push({
         path: `meta.sources.${i}.licence`,

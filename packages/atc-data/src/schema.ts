@@ -25,6 +25,7 @@ export const PUBLISHABLE_LICENCES = [
   'CC0-1.0',
   'CC-BY-4.0',
   'ODbL-1.0',
+  'CC-BY-SA-4.0',
   'Customer-Supplied',
 ] as const;
 
@@ -157,6 +158,7 @@ export const areaSchema = z
     name: z.string().min(1).optional(),
     polygon,
     exclude: z.array(z.string()).optional(),
+    parts: z.array(z.object({ polygon, floorFt: z.number(), ceilingFt: z.number() }).strict()).optional(),
     floorFt: z.number(),
     ceilingFt: z.number(),
   })

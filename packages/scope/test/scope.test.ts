@@ -435,3 +435,36 @@ describe('sectors with excluded areas', () => {
     expect(ctx.fills).toContain(GENERIC_SYSTEM.map.activeSector);
   });
 });
+
+describe('sectors with several volumes', () => {
+  const box = (eastNm: number, nm: number) => {
+    const c = destination(REF, 90, eastNm * M_PER_NM);
+    return [0, 90, 180, 270].map((b) => destination(c, b + 45, nm * Math.SQRT2 * M_PER_NM));
+  };
+  const split: AirspacePack = {
+    ...pack,
+    areas: [
+      {
+        id: '3S', kind: 'sector', polygon: box(0, 5), floorFt: 0, ceilingFt: 46000,
+        parts: [{ polygon: box(20, 5), floorFt: 0, ceilingFt: 27000 }],
+      },
+    ],
+  };
+  const map = buildVideoMap(split);
+  const s = map.sectors[0]!;
+  const xy = (nm: number) => map.projection.toLocal(destination(REF, 90, nm * M_PER_NM));
+
+  it('owns the main volume and each part within its own vertical limits', () => {
+    expect(s.parts).toHaveLength(1);
+    expect(inVolume(s, xy(0), 40000)).toBe(true);
+    expect(inVolume(s, xy(20), 20000)).toBe(true);
+    expect(inVolume(s, xy(20), 30000)).toBe(false); // above the part's ceiling
+    expect(inVolume(s, xy(10), 20000)).toBe(false); // between the volumes
+  });
+
+  it('fills every volume of the active sector', () => {
+    const ctx = fakeCtx();
+    new ScopeRenderer(ctx).draw(new ScopeView({ widthPx: 800, heightPx: 800, rangeNm: 30 }), map, undefined, GENERIC_SYSTEM, { activeSector: '3S' });
+    expect(ctx.fills.filter((f) => f === GENERIC_SYSTEM.map.activeSector)).toHaveLength(2);
+  });
+});

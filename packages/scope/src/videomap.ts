@@ -117,6 +117,9 @@ export function buildVideoMap(pack: AirspacePack, options: VideoMapOptions = {})
       floorFt: a.floorFt,
       ceilingFt: a.ceilingFt,
       labelAt: centroid(polygon),
+      ...(a.parts?.length
+        ? { parts: a.parts.map((p) => ({ polygon: p.polygon.map(L), floorFt: p.floorFt, ceilingFt: p.ceilingFt })) }
+        : {}),
     };
   });
   // "Excluding ARR sector, DSB sector": link the carved-out areas.

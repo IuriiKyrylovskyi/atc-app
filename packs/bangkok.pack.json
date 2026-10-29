@@ -4,12 +4,13 @@
   "source": "open",
   "eaip": "th",
   "airports": ["VTBS", "VTBD"],
-  "radiusNm": 220,
+  "radiusNm": 520,
   "reference": { "lat": 13.914444444444444, "lon": 100.60555555555555 },
   "vfrAirports": { "radiusNm": 80, "types": ["large_airport", "medium_airport"] },
-  "sectorsSource": "Thailand AIP ENR 2.1 (AIRAC 2026-10-29): Bangkok TMA sectorisation (south-flow runway configuration) and Bangkok ACC sectors 3N / 6N, transcribed",
+  "sectorsSource": "Thailand AIP ENR 2.1 (AIRAC 2026-10-29): Bangkok TMA sectorisation (south-flow runway configuration) and all 12 Bangkok ACC sectors, transcribed; FIR-border stretches from VATSpy (VTBB)",
   "sectorsLicence": "State-AIP-Development",
   "sectorsUrl": "https://aip.caat.or.th/2026-10-29-AIRAC/html/eAIP/VT-ENR-2.1-en-GB.html",
+  "boundaries": "vatspy",
   "sectors": [
     {
       "id": "DSB", "name": "Suvarnabhumi Departure (RWY 19/20L/20R)", "floorFt": 0, "ceilingFt": 10000,
@@ -94,14 +95,159 @@
       "exclude": ["ARR", "DAR", "DSB", "DDP"]
     },
     {
+      "id": "1N", "name": "Bangkok ACC Sector 1N", "floorFt": 0, "ceilingFt": 46000,
+      "boundary": [
+        { "dms": "162305N 0985437E" },
+        { "along": "VTBB", "dir": "cw", "to": { "dms": "173357N 1010000E" } },
+        { "dms": "170000N 1004517E" },
+        { "arc": { "centre": "PSL", "radiusNm": 30, "dir": "cw" }, "to": { "dms": "163202N 1004503E" } },
+        { "dms": "161748N 1004455E" }
+      ],
+      "exclude": ["APE1", "APE2", "APS1", "APS2", "APW", "APN", "ARR", "DSB", "DAR", "DDP"]
+    },
+    {
+      "id": "2N", "name": "Bangkok ACC Sector 2N", "floorFt": 0, "ceilingFt": 46000,
+      "boundary": [
+        { "dms": "161748N 1004455E" },
+        { "dms": "163202N 1004503E" },
+        { "arc": { "centre": "PSL", "radiusNm": 30, "dir": "ccw" }, "to": { "dms": "170000N 1004517E" } },
+        { "dms": "173357N 1010000E" },
+        { "along": "VTBB", "dir": "cw", "to": { "dms": "175851N 1030000E" } },
+        { "dms": "160948N 1030000E" },
+        { "dms": "161329N 1020259E" }
+      ],
+      "exclude": ["APE1", "APE2", "APS1", "APS2", "APW", "APN", "ARR", "DSB", "DAR", "DDP"]
+    },
+    {
       "id": "3N", "name": "Bangkok ACC Sector 3N", "floorFt": 0, "ceilingFt": 46000,
       "boundary": [{ "dms": "135506N 1003548E" }, { "dms": "162305N 0985437E" }, { "dms": "161748N 1004455E" }, { "dms": "161329N 1020259E" }],
+      "exclude": ["APE1", "APE2", "APS1", "APS2", "APW", "APN", "ARR", "DSB", "DAR", "DDP"]
+    },
+    {
+      "id": "4N", "name": "Bangkok ACC Sector 4N", "floorFt": 0, "ceilingFt": 46000,
+      "boundary": [
+        { "dms": "133006N 0991249E" },
+        { "along": "VTBB", "dir": "cw", "to": { "dms": "162305N 0985437E" } },
+        { "dms": "135506N 1003548E" }
+      ],
+      "exclude": ["APE1", "APE2", "APS1", "APS2", "APW", "APN", "ARR", "DSB", "DAR", "DDP"]
+    },
+    {
+      "id": "5N", "name": "Bangkok ACC Sector 5N", "floorFt": 0, "ceilingFt": 46000,
+      "boundary": [
+        { "dms": "141302N 1030000E" },
+        { "dms": "160948N 1030000E" },
+        { "dms": "175851N 1030000E" },
+        { "along": "VTBB", "dir": "cw", "to": { "dms": "141302N 1030000E" } }
+      ],
       "exclude": ["APE1", "APE2", "APS1", "APS2", "APW", "APN", "ARR", "DSB", "DAR", "DDP"]
     },
     {
       "id": "6N", "name": "Bangkok ACC Sector 6N", "floorFt": 0, "ceilingFt": 46000,
       "boundary": [{ "dms": "135506N 1003548E" }, { "dms": "161329N 1020259E" }, { "dms": "160948N 1030000E" }, { "dms": "141302N 1030000E" }],
       "exclude": ["APE1", "APE2", "APS1", "APS2", "APW", "APN", "ARR", "DSB", "DAR", "DDP"]
+    },
+    {
+      "id": "1S", "name": "Bangkok ACC Sector 1S", "floorFt": 0, "ceilingFt": 46000,
+      "boundary": [
+        { "dms": "114007N 0993449E" },
+        { "along": "VTBB", "dir": "cw", "to": { "dms": "133006N 0991249E" } },
+        { "dms": "135506N 1003548E" },
+        { "dms": "132006N 1004948E" },
+        { "dms": "124106N 1004948E" },
+        { "dms": "122500N 1005105E" },
+        { "dms": "104130N 1012502E" },
+        { "dms": "110007N 1005948E" },
+        { "dms": "112907N 0995949E" }
+      ],
+      "exclude": ["APE1", "APE2", "APS1", "APS2", "APW", "APN", "ARR", "DSB", "DAR", "DDP"]
+    },
+    {
+      "id": "2S", "name": "Bangkok ACC Sector 2S", "floorFt": 27000, "ceilingFt": 46000,
+      "boundary": [
+        { "dms": "102334N 0984514E" },
+        { "along": "VTBB", "dir": "cw", "to": { "dms": "114007N 0993449E" } },
+        { "dms": "112907N 0995949E" },
+        { "dms": "110007N 1005948E" },
+        { "dms": "104130N 1012502E" },
+        { "dms": "100244N 1013741E" },
+        { "dms": "090240N 1000013E" }
+      ]
+    },
+    {
+      "id": "3S", "name": "Bangkok ACC Sector 3S", "floorFt": 0, "ceilingFt": 46000,
+      "boundary": [
+        { "dms": "100007N 0974918E" },
+        { "dms": "100007N 0983849E" },
+        { "along": "VTBB", "dir": "cw", "to": { "dms": "102334N 0984514E" } },
+        { "dms": "090240N 1000013E" },
+        { "dms": "064717N 1000000E" },
+        { "dms": "080650N 0981825E" }
+      ],
+      "parts": [
+        {
+          "floorFt": 0, "ceilingFt": 27000,
+          "boundary": [
+            { "dms": "102334N 0984514E" },
+            { "along": "VTBB", "dir": "cw", "to": { "dms": "114007N 0993449E" } },
+            { "dms": "112907N 0995949E" },
+            { "dms": "090240N 1000013E" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "4S", "name": "Bangkok ACC Sector 4S", "floorFt": 0, "ceilingFt": 46000,
+      "boundary": [
+        { "dms": "100007N 0962950E" },
+        { "dms": "100007N 0974918E" },
+        { "dms": "080650N 0981825E" },
+        { "dms": "064717N 1000000E" },
+        { "dms": "063844N 1001050E" },
+        { "along": "VTBB", "dir": "cw", "to": { "dms": "063008N 0992949E" } },
+        { "dms": "071508N 0975950E" }
+      ]
+    },
+    {
+      "id": "5S", "name": "Bangkok ACC Sector 5S", "floorFt": 0, "ceilingFt": 46000,
+      "boundary": [
+        { "dms": "100244N 1013741E" },
+        { "dms": "104130N 1012502E" },
+        { "dms": "122500N 1005105E" },
+        { "dms": "124106N 1004948E" },
+        { "dms": "132006N 1004948E" },
+        { "dms": "135506N 1003548E" },
+        { "dms": "141302N 1030000E" },
+        { "along": "VTBB", "dir": "cw", "to": { "dms": "113654N 1030000E" } },
+        { "dms": "100000N 1021500E" }
+      ],
+      "exclude": ["APE1", "APE2", "APS1", "APS2", "APW", "APN", "ARR", "DSB", "DAR", "DDP"]
+    },
+    {
+      "id": "6S", "name": "Bangkok ACC Sector 6S", "floorFt": 0, "ceilingFt": 46000,
+      "boundary": [
+        { "dms": "063844N 1001050E" },
+        { "dms": "064717N 1000000E" },
+        { "dms": "090240N 1000013E" },
+        { "dms": "100244N 1013741E" },
+        { "dms": "100000N 1021500E" },
+        { "dms": "070000N 1030000E" },
+        { "dms": "064500N 1024000E" },
+        { "dms": "061500N 1021500E" },
+        { "along": "VTBB", "dir": "cw", "to": { "dms": "063844N 1001050E" } }
+      ],
+      "parts": [
+        {
+          "floorFt": 0, "ceilingFt": 27000,
+          "boundary": [
+            { "dms": "112907N 0995949E" },
+            { "dms": "110007N 1005948E" },
+            { "dms": "104130N 1012502E" },
+            { "dms": "100244N 1013741E" },
+            { "dms": "090240N 1000013E" }
+          ]
+        }
+      ]
     }
   ]
 }
