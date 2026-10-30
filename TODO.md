@@ -116,14 +116,17 @@ the defaults below; the open items are only about paid upgrades or permissions.
 
 ## Phase 2 — Phraseology + readback
 
-- [ ] Chevrotain grammar: altitude, heading, turn, speed, direct, squawk, contact, approach/landing clearance
-- [ ] Number normaliser (FL, thousands, "niner", decimals, NATO alphabet)
-- [x] Telephony designators: starter table (23 operators) + NATO / digit spelling for registrations
-- [ ] Full ICAO telephony table (import) + abbreviated callsigns
-- [ ] Multi-clearance transmissions → `Message`; out-of-grammar ⇒ "say again"
-- [ ] Phrase corpus ≥ 500 tests (text → expected `Message`)
-- [x] Readback generator v0: FAA phraseology, callsign last, text + spoken (TTS) forms, "unable"
-- [ ] Readback rules per region (ICAO Doc 4444 wording), wrong-readback injection
+- [x] Chevrotain grammar (`packages/voice` grammar.ts): altitude / level, heading, turn, speed / Mach, direct, squawk, resume own navigation, ILS approach clearance; FAA and ICAO wording
+- [ ] Grammar: contact / frequency change, landing clearance, expedite, vertical rate (need sim clearance kinds first)
+- [x] Number normaliser (normalise.ts): ICAO digit words ("niner", "tree", "fife"), numerals from STT ("8,000"), FL, thousands / hundreds, decimals ("point" / "decimal"), runway sides, NATO spelling variants, "I L S"
+- [x] Telephony designators: starter table (57 operators, US / Europe / Asia) + NATO / digit spelling for registrations
+- [x] Callsign matching: telephony name + number, spelled, written code, ICAO registration abbreviation after first contact, unique digit ending; fixes by name, NATO spelling or sound ("camren" → CAMRN)
+- [ ] Full ICAO telephony table (import, Doc 8585 mirror)
+- [x] Multi-clearance transmissions → `Message` through the command-line validation; out-of-grammar ⇒ pilot "say again" (addressed when the callsign was understood)
+- [x] Phrase corpus ≥ 500 tests: 800 generated (every instruction the app says, FAA + ICAO, text + spoken, 10 callsigns) + 40 hand-written STT-style variants + say-again cases
+- [x] Scope command line accepts phraseology as well as the short syntax
+- [x] Readback rules per region: FAA for US packs, ICAO Doc 4444 wording elsewhere (pack airports → `phraseOptions`)
+- [ ] Wrong-readback injection
 - [ ] `TextToSpeech` interface: Kokoro (kokoro-js) + Web Speech fallback
 - [ ] Per-aircraft voice/accent + VHF radio effect
 - [ ] Pilot model: reaction delay, "unable", requests

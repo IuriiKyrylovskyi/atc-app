@@ -12,6 +12,7 @@ import {
   heading3,
   latLonDm,
   logEntriesFromSim,
+  phraseOptions,
   runwayKey,
   trafficSummary,
 } from '@/viewmodels';
@@ -74,6 +75,13 @@ describe('airspace view-model', () => {
     expect(vm.ilsRunways.has(runwayKey('KJFK', '22L'))).toBe(true);
     expect(vm.ilsRunways.has(runwayKey('KJFK', '04R'))).toBe(false);
     expect(vm.thresholds.get(runwayKey('KJFK', '04R'))).toEqual({ id: 'RW04R', pos: { lat: 40.62, lon: -73.79 } });
+  });
+
+  it('picks FAA wording for US airspace, ICAO with the lowest transition altitude elsewhere', () => {
+    const ap = (icao: string, transitionAltFt?: number) => ({ icao, ...(transitionAltFt ? { transitionAltFt } : {}) }) as AirspacePack['airports'][number];
+    expect(phraseOptions({ airports: [ap('KJFK', 18_000), ap('KLGA', 18_000)] })).toEqual({ style: 'faa', transitionAltitudeFt: 18_000 });
+    expect(phraseOptions({ airports: [ap('UKBB'), ap('UKKK')] })).toEqual({ style: 'icao' });
+    expect(phraseOptions({ airports: [ap('VTBS', 11_000), ap('VTBD', 9000)] })).toEqual({ style: 'icao', transitionAltitudeFt: 9000 });
   });
 });
 
