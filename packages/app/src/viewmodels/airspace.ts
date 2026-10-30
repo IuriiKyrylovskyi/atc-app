@@ -5,6 +5,7 @@
  */
 import type { AirspacePack, LatLon } from '@atc-app/sim';
 import { verticalLimits, type VideoMap } from '@atc-app/scope';
+import type { PhraseOptions } from '@atc-app/voice';
 
 export interface SectorVM {
   id: string;
@@ -44,6 +45,8 @@ export interface AirspaceVM {
   ilsRunways: ReadonlySet<string>;
   /** Runway thresholds, keyed by `runwayKey`. */
   thresholds: ReadonlyMap<string, RunwayEndVM>;
+  /** Phraseology for instructions and readbacks in this airspace. */
+  phrase: PhraseOptions;
 }
 
 export const runwayKey = (airport: string, runway: string): string => `${airport}|${runway}`;
@@ -55,6 +58,17 @@ export function sectorLabel(s: {
   ceilingFt: number;
 }): string {
   return `${s.id} ${s.name ?? ''} ${verticalLimits(s)}`;
+}
+
+/**
+ * FAA wording where most airports are US (K… / P…), ICAO elsewhere; the lowest
+ * published transition altitude, if the pack has one (else the phraseology default).
+ */
+export function phraseOptions(pack: Pick<AirspacePack, 'airports'>): PhraseOptions {
+  const us = pack.airports.filter((a) => /^[KP]/.test(a.icao)).length;
+  const style = us * 2 > pack.airports.length ? 'faa' : 'icao';
+  const ta = pack.airports.map((a) => a.transitionAltFt).filter((t): t is number => t !== undefined);
+  return { style, ...(ta.length ? { transitionAltitudeFt: Math.min(...ta) } : {}) };
 }
 
 /** Builds the airspace view-model of a pack and its video map (sectors come from the map). */
@@ -82,5 +96,6 @@ export function airspaceFromPack(pack: AirspacePack, map: Pick<VideoMap, 'sector
     thresholds: new Map(
       pack.runways.map((r) => [runwayKey(r.airport, r.id), { id: `RW${r.id}`, pos: r.threshold }])
     ),
+    phrase: phraseOptions(pack),
   };
 }

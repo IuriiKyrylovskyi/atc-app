@@ -41,7 +41,13 @@ import {
   type VideoMap,
 } from '@atc-app/scope';
 import { buildScenario, findScenario, scenariosForPack } from '@atc-app/scenario';
-import { instruction, parseCommand, readback, type CommandContext } from '@atc-app/voice';
+import {
+  instruction,
+  interpret,
+  readback,
+  sayAgain,
+  type TransmissionContext,
+} from '@atc-app/voice';
 import { loadPack, loadPackManifest } from '@/services/packLoader';
 import { AREAS } from '@/config/areas';
 import { SIM_RATES, SimSession, type SimRate } from '@/services/simSession';
@@ -232,10 +238,13 @@ function addLog(kind: LogLine['kind'], who: string, text: string, t = simTime.va
   log.value = [...log.value, { id: ++logId, t, kind, who, text }].slice(-LOG_LINES);
 }
 
-const commandContext = (): CommandContext => ({
+const fixIds = computed(() => [...(airspace.value?.fixes.keys() ?? [])]);
+
+const commandContext = (): TransmissionContext => ({
   callsigns: picture?.list().map((t) => t.callsign) ?? [],
   selected: traffic.selected,
   hasFix: (id) => airspace.value?.fixes.has(id) ?? false,
+  fixes: fixIds.value,
   hasIls: (airport, runway) => airspace.value?.ilsRunways.has(runwayKey(airport, runway)) ?? false,
   aircraft: (cs) => picture?.get(cs)?.ac,
 });
@@ -246,29 +255,43 @@ const commandPreview = computed(() => {
   // Re-evaluate when the traffic or the selection changes.
   void simTime.value;
   void selectedAc.value;
-  const r = parseCommand(commandText.value, commandContext());
+  const r = interpret(commandText.value, commandContext());
   if (!r.ok) return { ok: false, text: r.error };
-  return { ok: true, text: instruction(r.message, picture.get(r.message.to)?.ac).text };
+  return {
+    ok: true,
+    text: instruction(r.message, picture.get(r.message.to)?.ac, airspace.value?.phrase).text,
+  };
 });
+
+function sent(input: string): void {
+  history.unshift(input);
+  historyIndex = -1;
+  commandText.value = '';
+}
 
 async function submitCommand(): Promise<void> {
   const input = commandText.value.trim();
   if (!input || !session || !picture) return;
-  const r = parseCommand(input, commandContext());
+  const r = interpret(input, commandContext());
+  const phrase = airspace.value?.phrase;
   if (!r.ok) {
+    // Phraseology the addressed pilot did not understand still went out on frequency.
+    if (r.spoken && r.callsign) {
+      sent(input);
+      addLog('atc', 'ATC', input);
+      addLog('pilot', r.callsign, sayAgain(r.callsign).text);
+    }
     commandError.value = r.error;
     return;
   }
   const ac = picture.get(r.message.to)?.ac;
-  history.unshift(input);
-  historyIndex = -1;
-  commandText.value = '';
+  sent(input);
   commandError.value = null;
   if (traffic.selected !== r.message.to) select(r.message.to);
   // The parser only accepts aircraft on the scope, so the readback follows at once;
   // performance problems come back later as "unable" (snapshot events).
-  addLog('atc', 'ATC', instruction(r.message, ac).text);
-  addLog('pilot', r.message.to, readback(r.message, ac).text);
+  addLog('atc', 'ATC', r.spoken ? input : instruction(r.message, ac, phrase).text);
+  addLog('pilot', r.message.to, readback(r.message, ac, phrase).text);
   const issued = await session.issue(r.message);
   if (!issued.ok) addLog('error', r.message.to, issued.reason ?? 'not delivered');
 }
@@ -302,7 +325,9 @@ function onCommandInput(): void {
 }
 
 const commandPlaceholder = computed(() =>
-  traffic.selected ? `${traffic.selected} › D080 H240 S220 · Enter` : 'DAL1192 D080 H240 S220 · Enter'
+  traffic.selected
+    ? `${traffic.selected} › D080 H240 S220 or phraseology · Enter`
+    : 'DAL1192 D080 H240 S220 or "Delta 1192 descend and maintain 8000" · Enter'
 );
 
 const logTime = clockMs;

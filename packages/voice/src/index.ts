@@ -29,9 +29,15 @@
  *   Why better: more natural, more accents, no model download.
  *   Price: ≈ $1.8–3.6 per subscriber-month at ~120 k chars — too costly as default.
  *
- * Today: keyboard command line (command.ts), radio callsigns (telephony.ts) and
- * FAA phraseology for instructions, readbacks and "unable" (phraseology.ts).
+ * Today: keyboard command line (command.ts), spoken phraseology parser
+ * (normalise.ts → grammar.ts → transmission.ts, ending in the command-line
+ * validation), radio callsigns (telephony.ts) and
+ * FAA / ICAO phraseology for instructions, readbacks, "unable" and "say again"
+ * (phraseology.ts).
  */
 export * from './telephony';
 export * from './phraseology';
 export * from './command';
+export * from './normalise';
+export * from './grammar';
+export * from './transmission';

@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@atc-app/sim": "workspace:*"
+    "@atc-app/sim": "workspace:*",
+    "chevrotain": "^11.2.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
