@@ -820,7 +820,7 @@ onBeforeUnmount(() => {
     <canvas
       ref="canvas"
       class="scope-canvas"
-      :style="labelHover ? { cursor: labelHover } : undefined"
+      :class="labelHover"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
@@ -998,10 +998,18 @@ onBeforeUnmount(() => {
   overflow: hidden;
   user-select: none;
 }
+/* The size is set inline by fitCanvas(); cursors go through classes so Vue
+   never patches (or removes) the canvas style attribute. */
 .scope-canvas {
   display: block;
   touch-action: none;
   cursor: crosshair;
+}
+.scope-canvas.grab {
+  cursor: grab;
+}
+.scope-canvas.grabbing {
+  cursor: grabbing;
 }
 .panel {
   position: absolute;
