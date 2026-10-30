@@ -4,6 +4,9 @@
  *
  * - ICAO number words → digits, one token per digit ("niner" → "9", "tree" → "3",
  *   "fife" → "5"); numerals the engine already wrote stay as they are ("8,000" → "8000").
+ * - Group words a speech engine may write → digits: "eleven ninety two" → "11 92",
+ *   "two hundred fifty" → "250" (hundred + tens only: "five thousand five hundred"
+ *   stays for the grammar).
  * - "FL340" → "flight level 340", "250kts" → "250 knots", "0.78" / ".78" → "point 78",
  *   "decimal" → "point".
  * - Runway designators "04R" → "04 right"; "centre" → "center".
@@ -28,6 +31,27 @@ const NUMBER_WORDS: Readonly<Record<string, string>> = {
   niner: '9',
 };
 
+const TEENS_AND_TENS: Readonly<Record<string, number>> = {
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+  thirteen: 13,
+  fourteen: 14,
+  fifteen: 15,
+  sixteen: 16,
+  seventeen: 17,
+  eighteen: 18,
+  nineteen: 19,
+  twenty: 20,
+  thirty: 30,
+  forty: 40,
+  fifty: 50,
+  sixty: 60,
+  seventy: 70,
+  eighty: 80,
+  ninety: 90,
+};
+
 const SPELLING: Readonly<Record<string, string>> = {
   alfa: 'alpha',
   juliet: 'juliett',
@@ -42,7 +66,19 @@ const SPELLING: Readonly<Record<string, string>> = {
   foot: 'feet',
 };
 
-const SIDE: Readonly<Record<string, string>> = { l: 'left', r: 'right', c: 'center' };
+/** Runway side glued to the number ("04R", "4right") — and what speech engines make of it ("4Ride"). */
+const SIDE: Readonly<Record<string, string>> = {
+  l: 'left',
+  r: 'right',
+  c: 'center',
+  left: 'left',
+  right: 'right',
+  center: 'center',
+  centre: 'center',
+  ride: 'right',
+  rite: 'right',
+  write: 'right',
+};
 
 export function normaliseTranscript(input: string): string[] {
   const text = input
@@ -62,13 +98,36 @@ export function normaliseTranscript(input: string): string[] {
     .replace(/-/g, ' ');
 
   const out: string[] = [];
+  // Indexes in `out` of numbers said as group words ("ninety two", "eleven").
+  const grouped = new Set<number>();
   for (const raw of text.split(/\s+/).filter(Boolean)) {
     const word = SPELLING[raw] ?? raw;
-    const runway = /^(\d{1,2})([lrc])$/.exec(word);
-    if (runway) {
-      out.push(runway[1]!, SIDE[runway[2]!]!);
+    const runway = /^(\d{1,2})([a-z]+)$/.exec(word);
+    const side = runway ? SIDE[runway[2]!] : undefined;
+    const last = out.length - 1;
+    if (runway && side) {
+      out.push(runway[1]!, side);
     } else if (word === 'fl') {
       out.push('flight', 'level');
+    } else if (word in TEENS_AND_TENS) {
+      const value = TEENS_AND_TENS[word]!;
+      // "two hundred fifty" → "250"
+      if (out[last] === 'hundred' && /^[1-9]$/.test(out[last - 1] ?? '')) {
+        out.splice(last - 1, 2, `${out[last - 1]}${String(value).padStart(2, '0')}`);
+        grouped.add(out.length - 1);
+      } else {
+        out.push(String(value));
+        grouped.add(out.length - 1);
+      }
+    } else if (
+      word in NUMBER_WORDS &&
+      word !== 'zero' &&
+      grouped.has(last) &&
+      out[last]!.endsWith('0') &&
+      Number(out[last]) % 100 >= 20
+    ) {
+      // "ninety two" → "92", "two hundred fifty five" → "255"
+      out[last] = String(Number(out[last]) + Number(NUMBER_WORDS[word]));
     } else {
       out.push(NUMBER_WORDS[word] ?? word);
     }

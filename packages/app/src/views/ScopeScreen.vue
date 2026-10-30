@@ -43,8 +43,10 @@ import {
 import { buildScenario, findScenario, scenariosForPack } from '@atc-app/scenario';
 import {
   KOKORO_DOWNLOAD_MB,
+  MOONSHINE_DOWNLOAD_MB,
   instruction,
   interpret,
+  pickTranscript,
   readback,
   sayAgain,
   type TransmissionContext,
@@ -58,6 +60,12 @@ import {
   type RadioVoiceStatus,
   type VoiceMode,
 } from '@/services/radioVoice';
+import {
+  ControllerMic,
+  availableMicModes,
+  type ControllerMicStatus,
+  type MicMode,
+} from '@/services/controllerMic';
 import { isolationRequested, isolationUrl } from '@/utils/isolation';
 import {
   aircraftDetail,
@@ -156,11 +164,13 @@ function armVoice(): void {
 }
 
 /**
- * Kokoro runs twice as fast cross-origin isolated: reload the scope as `?coi=1`
- * (once — a server without the headers gives a normal page; see utils/isolation).
+ * Kokoro and Moonshine run twice as fast cross-origin isolated (multi-threaded
+ * WASM): reload the scope as `?coi=1` (once — a server without the headers gives
+ * a normal page; see utils/isolation).
  */
-function reloadIsolatedFor(mode: VoiceMode): boolean {
-  if (mode !== 'kokoro' || window.crossOriginIsolated || isolationRequested()) return false;
+function reloadIsolated(): boolean {
+  const wanted = voiceMode.value === 'kokoro' || micMode.value === 'moonshine';
+  if (!wanted || window.crossOriginIsolated || isolationRequested()) return false;
   window.location.replace(isolationUrl(true));
   return true;
 }
@@ -168,7 +178,7 @@ function reloadIsolatedFor(mode: VoiceMode): boolean {
 function setVoiceMode(mode: string): void {
   voiceMode.value = VOICE_MODES.includes(mode as VoiceMode) ? (mode as VoiceMode) : 'off';
   store(VOICE_KEY, voiceMode.value);
-  if (reloadIsolatedFor(voiceMode.value)) return;
+  if (reloadIsolated()) return;
   voiceArmed = true;
   radioVoice.setMode(voiceMode.value);
 }
@@ -180,6 +190,72 @@ const voiceNote = computed(() => {
   if (s.speaking) return `TX ${s.speaking.callsign}`;
   return null;
 });
+
+// ── Controller push-to-talk (remembered; hold ` or the PTT button) ─────────
+const MIC_KEY = 'atc.scope.mic';
+const PTT_KEY = 'Backquote';
+const MIC_LABELS: Record<MicMode, string> = {
+  off: 'MIC OFF',
+  browser: 'MIC BROWSER',
+  moonshine: `MIC MOONSHINE (${MOONSHINE_DOWNLOAD_MB} MB once)`,
+};
+const micModes = availableMicModes();
+const storedMic = stored(MIC_KEY);
+const micMode = ref<MicMode>(
+  micModes.includes(storedMic as MicMode) ? (storedMic as MicMode) : 'off'
+);
+const micStatus = shallowRef<ControllerMicStatus | null>(null);
+const controllerMic = new ControllerMic((s) => (micStatus.value = s));
+
+function setMicMode(mode: string): void {
+  micMode.value = micModes.includes(mode as MicMode) ? (mode as MicMode) : 'off';
+  store(MIC_KEY, micMode.value);
+  if (reloadIsolated()) return;
+  controllerMic.setMode(micMode.value);
+}
+
+const micNote = computed(() => {
+  const s = micStatus.value;
+  if (!s) return null;
+  if (s.state === 'listening') return 'ATC TX';
+  if (s.state === 'recognising') return 'ATC …';
+  if (s.loading !== null) return `MOONSHINE ${Math.round(s.loading * 100)}%`;
+  return null;
+});
+
+function pttDown(): void {
+  if (micMode.value === 'off' || !scenarioName.value) return;
+  // Pilot audio also needs a gesture; the PTT press is one.
+  armVoice();
+  if (!controllerMic.press() && micStatus.value?.loading != null)
+    commandError.value = 'Moonshine still loading — type or wait';
+}
+
+async function pttUp(): Promise<void> {
+  const t = await controllerMic.release();
+  if (!t) {
+    // Blocked microphone, recogniser down: say so where the controller looks.
+    if (micStatus.value?.error) commandError.value = micStatus.value.error;
+    return;
+  }
+  // Grammar re-scoring: the first alternative the phraseology parser understands.
+  commandText.value = pickTranscript(t, (text) => interpret(text, commandContext()).ok);
+  commandError.value = null;
+  await submitCommand();
+}
+
+function onPttKey(e: KeyboardEvent): boolean {
+  if (e.code !== PTT_KEY || micMode.value === 'off') return false;
+  e.preventDefault();
+  if (e.type === 'keydown' && !e.repeat) pttDown();
+  if (e.type === 'keyup') void pttUp();
+  return true;
+}
+const onKeyUp = (e: KeyboardEvent): void => void onPttKey(e);
+/** A key released in another window never comes up here: end the transmission. */
+const onWindowBlur = (): void => {
+  if (micStatus.value?.state === 'listening') void pttUp();
+};
 
 function setSystem(id: string): void {
   systemId.value = findSystem(id).id;
@@ -388,11 +464,12 @@ function onCommandInput(): void {
   historyIndex = -1;
 }
 
-const commandPlaceholder = computed(() =>
-  traffic.selected
+const commandPlaceholder = computed(() => {
+  const typed = traffic.selected
     ? `${traffic.selected} › D080 H240 S220 or phraseology · Enter`
-    : 'DAL1192 D080 H240 S220 or "Delta 1192 descend and maintain 8000" · Enter'
-);
+    : 'DAL1192 D080 H240 S220 or "Delta 1192 descend and maintain 8000" · Enter';
+  return micMode.value === 'off' ? typed : `${typed} · hold \` to talk`;
+});
 
 const logTime = clockMs;
 
@@ -529,6 +606,8 @@ function toggle(layer: keyof ScopeLayers): void {
 }
 
 function onKey(e: KeyboardEvent): void {
+  // Push-to-talk works while typing, too.
+  if (onPttKey(e)) return;
   // Typing in the command line is not a scope shortcut.
   if (e.target instanceof HTMLInputElement) return;
   if ((e.key === 'Enter' || e.key === '/') && commandInput.value) {
@@ -703,13 +782,16 @@ onMounted(async () => {
   resizeObserver = new ResizeObserver(fitCanvas);
   if (host.value) resizeObserver.observe(host.value);
   window.addEventListener('keydown', onKey);
+  window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('blur', onWindowBlur);
   blinkTimer = setInterval(blink, 500);
   loadPackManifest()
     .then((packs) => {
       areaOptions.value = buildAreaOptions(AREAS, packs, !!import.meta.env.DEV);
     })
     .catch(() => undefined);
-  if (reloadIsolatedFor(voiceMode.value)) return;
+  if (reloadIsolated()) return;
+  controllerMic.setMode(micMode.value);
   if (voiceMode.value !== 'off') {
     window.addEventListener('pointerdown', armVoice);
     window.addEventListener('keydown', armVoice);
@@ -720,11 +802,14 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   resizeObserver?.disconnect();
   window.removeEventListener('keydown', onKey);
+  window.removeEventListener('keyup', onKeyUp);
+  window.removeEventListener('blur', onWindowBlur);
   if (frame) cancelAnimationFrame(frame);
   if (blinkTimer) clearInterval(blinkTimer);
   window.removeEventListener('pointerdown', armVoice);
   window.removeEventListener('keydown', armVoice);
   radioVoice.dispose();
+  controllerMic.dispose();
   session?.dispose();
   session = null;
 });
@@ -829,6 +914,17 @@ onBeforeUnmount(() => {
           <option v-for="m in VOICE_MODES" :key="m" :value="m">{{ VOICE_LABELS[m] }}</option>
         </select>
         <span v-if="voiceNote" class="clock">{{ voiceNote }}</span>
+        <select
+          v-if="micModes.length > 1"
+          class="btn voice"
+          :value="micMode"
+          :title="micStatus?.error ?? 'Controller speech recognition (hold ` to talk)'"
+          :class="{ bad: micStatus?.error }"
+          @change="setMicMode(($event.target as HTMLSelectElement).value)"
+        >
+          <option v-for="m in micModes" :key="m" :value="m">{{ MIC_LABELS[m] }}</option>
+        </select>
+        <span v-if="micNote" class="clock">{{ micNote }}</span>
       </div>
       <div v-if="selectedInfo" class="info">
         <div class="info-head">{{ selectedInfo.head }}</div>
@@ -848,18 +944,33 @@ onBeforeUnmount(() => {
       <div v-if="commandError || commandPreview" class="preview" :class="{ bad: commandError || !commandPreview?.ok }">
         {{ commandError ?? commandPreview?.text }}
       </div>
-      <input
-        ref="commandInput"
-        v-model="commandText"
-        class="command"
-        :placeholder="commandPlaceholder"
-        spellcheck="false"
-        autocomplete="off"
-        autocapitalize="characters"
-        enterkeyhint="send"
-        @keydown="onCommandKey"
-        @input="onCommandInput"
-      />
+      <div class="command-row">
+        <input
+          ref="commandInput"
+          v-model="commandText"
+          class="command"
+          :placeholder="commandPlaceholder"
+          spellcheck="false"
+          autocomplete="off"
+          autocapitalize="characters"
+          enterkeyhint="send"
+          @keydown="onCommandKey"
+          @input="onCommandInput"
+        />
+        <button
+          v-if="micMode !== 'off'"
+          class="btn ptt"
+          :class="{ active: micStatus?.state === 'listening', bad: micStatus?.error }"
+          :title="micStatus?.error ?? 'Hold to talk (or hold `)'"
+          @pointerdown.prevent="pttDown"
+          @pointerup="pttUp"
+          @pointercancel="pttUp"
+          @pointerleave="onWindowBlur"
+          @contextmenu.prevent
+        >
+          PTT
+        </button>
+      </div>
     </div>
 
     <div class="panel bottom-left">
@@ -1016,8 +1127,14 @@ onBeforeUnmount(() => {
 .preview.bad {
   color: #e0a46a;
 }
-.command {
+.command-row {
+  display: flex;
+  gap: 4px;
   margin-top: 2px;
+}
+.command {
+  flex: 1;
+  min-width: 0;
   padding: 6px 8px;
   border: 1px solid #21404f;
   border-radius: 3px;
@@ -1049,6 +1166,18 @@ onBeforeUnmount(() => {
   border-color: #3a5f72;
   background: #163246;
   color: #cfe0e8;
+}
+.ptt {
+  touch-action: none;
+  user-select: none;
+}
+.ptt.active {
+  border-color: #b8483f;
+  background: #4a1d1a;
+  color: #ffd2cc;
+}
+.btn.bad {
+  border-color: #6a3a2a;
 }
 .message {
   position: absolute;

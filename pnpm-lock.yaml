@@ -323,6 +323,9 @@ importers:
       '@atc-app/sim':
         specifier: workspace:*
         version: link:../sim
+      '@huggingface/transformers':
+        specifier: ^3.8.1
+        version: 3.8.1
       chevrotain:
         specifier: ^11.2.0
         version: 11.2.0

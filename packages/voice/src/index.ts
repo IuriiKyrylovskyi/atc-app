@@ -34,7 +34,8 @@
  * validation), radio callsigns (telephony.ts) and
  * FAA / ICAO phraseology for instructions, readbacks, "unable" and "say again"
  * (phraseology.ts), spoken by pilots over a radio channel with per-callsign
- * voices and a VHF effect — system voices or Kokoro (tts/).
+ * voices and a VHF effect — system voices or Kokoro (tts/); push-to-talk
+ * controller speech recognised by the browser or by Moonshine on the device (stt/).
  */
 export * from './telephony';
 export * from './phraseology';
@@ -43,3 +44,4 @@ export * from './normalise';
 export * from './grammar';
 export * from './transmission';
 export * from './tts';
+export * from './stt';
