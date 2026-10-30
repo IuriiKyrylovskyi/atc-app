@@ -56,6 +56,26 @@ const airspacePacks = (): Plugin => ({
   },
 });
 
+// Cross-origin isolation for the radar scope only (src/utils/isolation.ts): the
+// document requested as `?coi=1` gets COOP + COEP; workers always get COEP so an
+// isolated page may start them. Any other document stays unisolated, so the web
+// checkout's cross-origin iframes keep working.
+const crossOriginIsolation = (): Plugin => ({
+  name: 'cross-origin-isolation',
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      const dest = req.headers['sec-fetch-dest'];
+      if (dest === 'document' && /[?&]coi=1\b/.test(req.url ?? '')) {
+        res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+        res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+      } else if (dest === 'worker') {
+        res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+      }
+      next();
+    });
+  },
+});
+
 export default defineConfig(({ mode }) => {
   // Capacitor sets this env var during build if you use their CLI,
   // or you can set it manually in your build scripts.
@@ -65,7 +85,13 @@ export default defineConfig(({ mode }) => {
   return {
     root: '.',
     base: './',
-    plugins: [vue(), vuetify({ autoImport: true }), checkSkymessUpdates(), airspacePacks()],
+    plugins: [
+      vue(),
+      vuetify({ autoImport: true }),
+      checkSkymessUpdates(),
+      airspacePacks(),
+      crossOriginIsolation(),
+    ],
     define: {
       'process.env': {},
       __APP_VERSION__: JSON.stringify(rootPkg.version),
@@ -106,6 +132,8 @@ export default defineConfig(({ mode }) => {
             }),
       },
     },
+    // Module workers: the Kokoro worker lazy-imports kokoro-js (code splitting).
+    worker: { format: 'es' },
     build: {
       outDir: 'dist',
       assetsDir: 'assets',

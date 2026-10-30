@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "@atc-app/sim": "workspace:*",
-    "chevrotain": "^11.2.0"
+    "chevrotain": "^11.2.0",
+    "kokoro-js": "^1.2.1"
   },
   "devDependencies": {
     "typescript": "^5.3.3",

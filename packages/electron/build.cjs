@@ -12,6 +12,8 @@ const {
 const path = require('path');
 
 const isWatch = process.argv.includes('--watch');
+// Dev: compile main + preload only (the window loads the Vite dev server, no app-dist needed).
+const isMainOnly = process.argv.includes('--main-only');
 
 // -----------------------------------------------------------------------------
 // 🧩 Paths
@@ -61,7 +63,13 @@ function compile() {
   });
 }
 
-if (isWatch) {
+if (isMainOnly) {
+  mkdirSync(outDir, { recursive: true });
+  compile().catch((err) => {
+    console.error('❌ Build failed:', err);
+    process.exit(1);
+  });
+} else if (isWatch) {
   mkdirSync(outDir, { recursive: true });
   compile().then(() => {
     console.log('👀 Watching for changes...');

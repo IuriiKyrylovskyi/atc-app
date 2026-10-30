@@ -33,7 +33,8 @@
  * (normalise.ts → grammar.ts → transmission.ts, ending in the command-line
  * validation), radio callsigns (telephony.ts) and
  * FAA / ICAO phraseology for instructions, readbacks, "unable" and "say again"
- * (phraseology.ts).
+ * (phraseology.ts), spoken by pilots over a radio channel with per-callsign
+ * voices and a VHF effect — system voices or Kokoro (tts/).
  */
 export * from './telephony';
 export * from './phraseology';
@@ -41,3 +42,4 @@ export * from './command';
 export * from './normalise';
 export * from './grammar';
 export * from './transmission';
+export * from './tts';

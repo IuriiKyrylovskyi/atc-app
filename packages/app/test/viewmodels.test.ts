@@ -13,6 +13,7 @@ import {
   latLonDm,
   logEntriesFromSim,
   phraseOptions,
+  pilotTransmissionsFromSim,
   runwayKey,
   trafficSummary,
 } from '@/viewmodels';
@@ -115,6 +116,20 @@ describe('aircraft view-model', () => {
     expect(aircraftDetail(aircraftFromSim(armed, 0)).nav).toBe('DCT CRI ROBER ASALT DPK · ILS 22L CLEARED');
     const onGs = aircraft({ target: { ...aircraft().target, approach: { type: 'ILS', airport: 'KJFK', runway: '22L', phase: 'glideslope' } } });
     expect(aircraftDetail(aircraftFromSim(onGs, 0)).nav).toBe('ILS 22L LOC GS');
+  });
+});
+
+describe('pilot transmissions view-model', () => {
+  it('speaks "unable" and go-arounds, nothing else', () => {
+    const events: SimEvent[] = [
+      { t: 10, type: 'fix_reached', callsign: 'DAL1192', fix: 'CRI' },
+      { t: 11, type: 'clearance_rejected', callsign: 'DAL1192', clearance: { kind: 'altitude', altFt: 45_000 }, reason: 'above our ceiling' },
+      { t: 12, type: 'missed_approach', callsign: 'UAL1771', airport: 'KEWR', runway: '22L', reason: 'too high' },
+    ];
+    expect(pilotTransmissionsFromSim(events)).toEqual([
+      { callsign: 'DAL1192', spoken: 'unable, above our ceiling, Delta one one niner two' },
+      { callsign: 'UAL1771', spoken: 'going around, United one seven seven one' },
+    ]);
   });
 });
 

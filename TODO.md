@@ -127,8 +127,14 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [x] Scope command line accepts phraseology as well as the short syntax
 - [x] Readback rules per region: FAA for US packs, ICAO Doc 4444 wording elsewhere (pack airports → `phraseOptions`)
 - [ ] Wrong-readback injection
-- [ ] `TextToSpeech` interface: Kokoro (kokoro-js) + Web Speech fallback
-- [ ] Per-aircraft voice/accent + VHF radio effect
+- [x] Speech engines (`packages/voice` tts/): system voices (Web Speech) + Kokoro-82M in a Web Worker (q8, ≈ 92 MB once from Hugging Face), one-at-a-time radio channel with a queue
+- [x] Per-callsign voice (gender, accent by operator, pitch, pace) + VHF radio effect (band-pass, soft clip, carrier hiss, squelch tail; system voices get only carrier and squelch)
+- [x] Scope: VOICE OFF / SYS / KOKORO (remembered); readbacks, "unable", "say again" and go-arounds spoken; TX indicator
+- [x] Kokoro runtime check (Chrome, 10-core Mac, q8 WASM): model download + load ≈ 20 s first time, < 1.5 s cached; synthesis 1.6× slower than real time single-threaded (4.5 s readback starts ≈ 7.8 s after Enter), 0.8× with cross-origin isolation (multi-thread WASM)
+- [x] Kokoro latency: clause streaming (first clause plays while the rest synthesises) + cross-origin isolation of the scope page only (`?coi=1`: COOP + COEP credentialless from the Vite dev servers and Electron dev; leaving the scope reloads unisolated, so the RevenueCat / Stripe checkout iframes — no COEP / CORP headers — are never blocked). Readback starts ≈ 3.1 s after Enter (was 7.8–11.5 s), clauses back to back
+- [ ] Isolation headers on production web hosting (`index.html?coi=1`) and packaged Electron (file:// gets no headers: needs a custom app:// protocol); Safari has no COEP credentialless (stays single-threaded)
+- [ ] WebGPU fp32 (≈ 326 MB) as an option for strong GPUs; shorter pilot reaction gap once the pilot model owns it
+- [ ] Keep the 21.6 MB ONNX WASM out of mobile builds (CDN or on-demand)
 - [ ] Pilot model: reaction delay, "unable", requests
 
 ## Phase 3 — Voice engines

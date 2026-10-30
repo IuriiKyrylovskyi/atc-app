@@ -42,6 +42,7 @@ import {
 } from '@atc-app/scope';
 import { buildScenario, findScenario, scenariosForPack } from '@atc-app/scenario';
 import {
+  KOKORO_DOWNLOAD_MB,
   instruction,
   interpret,
   readback,
@@ -52,6 +53,13 @@ import { loadPack, loadPackManifest } from '@/services/packLoader';
 import { AREAS } from '@/config/areas';
 import { SIM_RATES, SimSession, type SimRate } from '@/services/simSession';
 import {
+  RadioVoice,
+  VOICE_MODES,
+  type RadioVoiceStatus,
+  type VoiceMode,
+} from '@/services/radioVoice';
+import { isolationRequested, isolationUrl } from '@/utils/isolation';
+import {
   aircraftDetail,
   aircraftFromSim,
   airspaceFromPack,
@@ -61,6 +69,7 @@ import {
   cursorReadout,
   EMPTY_TRAFFIC,
   logEntriesFromSim,
+  pilotTransmissionsFromSim,
   runwayKey,
   trafficSummary,
   type AirspaceVM,
@@ -121,6 +130,56 @@ const systemId = ref(findSystem(stored(SYSTEM_KEY)).id);
 const system = computed(() => findSystem(systemId.value));
 const activeSector = ref<string>('');
 const sectorOptions = computed(() => airspace.value?.sectors ?? []);
+
+// ── Pilot voices (remembered; audio starts on the first click / key press) ──
+const VOICE_KEY = 'atc.scope.voice';
+const VOICE_LABELS: Record<VoiceMode, string> = {
+  off: 'VOICE OFF',
+  system: 'VOICE SYS',
+  kokoro: `VOICE KOKORO (${KOKORO_DOWNLOAD_MB} MB once)`,
+};
+const storedVoice = stored(VOICE_KEY);
+const voiceMode = ref<VoiceMode>(
+  VOICE_MODES.includes(storedVoice as VoiceMode) ? (storedVoice as VoiceMode) : 'off'
+);
+const voiceStatus = shallowRef<RadioVoiceStatus | null>(null);
+const radioVoice = new RadioVoice((s) => (voiceStatus.value = s));
+let voiceArmed = false;
+
+/** Browsers only start audio after a user gesture: apply the remembered mode on the first one. */
+function armVoice(): void {
+  if (voiceArmed) return;
+  voiceArmed = true;
+  window.removeEventListener('pointerdown', armVoice);
+  window.removeEventListener('keydown', armVoice);
+  radioVoice.setMode(voiceMode.value);
+}
+
+/**
+ * Kokoro runs twice as fast cross-origin isolated: reload the scope as `?coi=1`
+ * (once — a server without the headers gives a normal page; see utils/isolation).
+ */
+function reloadIsolatedFor(mode: VoiceMode): boolean {
+  if (mode !== 'kokoro' || window.crossOriginIsolated || isolationRequested()) return false;
+  window.location.replace(isolationUrl(true));
+  return true;
+}
+
+function setVoiceMode(mode: string): void {
+  voiceMode.value = VOICE_MODES.includes(mode as VoiceMode) ? (mode as VoiceMode) : 'off';
+  store(VOICE_KEY, voiceMode.value);
+  if (reloadIsolatedFor(voiceMode.value)) return;
+  voiceArmed = true;
+  radioVoice.setMode(voiceMode.value);
+}
+
+const voiceNote = computed(() => {
+  const s = voiceStatus.value;
+  if (!s) return null;
+  if (s.loading !== null) return `KOKORO ${Math.round(s.loading * 100)}%`;
+  if (s.speaking) return `TX ${s.speaking.callsign}`;
+  return null;
+});
 
 function setSystem(id: string): void {
   systemId.value = findSystem(id).id;
@@ -218,6 +277,7 @@ function fitCanvas(): void {
 function onSnapshot(s: Snapshot): void {
   if (!picture) return;
   for (const l of logEntriesFromSim(s.events)) addLog(l.kind, l.who, l.text, l.t);
+  for (const t of pilotTransmissionsFromSim(s.events)) radioVoice.say(t.callsign, t.spoken);
   landedCount.value += s.events.filter((e) => e.type === 'landed').length;
   picture.update(s);
   simTime.value = s.t;
@@ -279,7 +339,9 @@ async function submitCommand(): Promise<void> {
     if (r.spoken && r.callsign) {
       sent(input);
       addLog('atc', 'ATC', input);
-      addLog('pilot', r.callsign, sayAgain(r.callsign).text);
+      const said = sayAgain(r.callsign);
+      addLog('pilot', r.callsign, said.text);
+      radioVoice.say(r.callsign, said.spoken);
     }
     commandError.value = r.error;
     return;
@@ -291,7 +353,9 @@ async function submitCommand(): Promise<void> {
   // The parser only accepts aircraft on the scope, so the readback follows at once;
   // performance problems come back later as "unable" (snapshot events).
   addLog('atc', 'ATC', r.spoken ? input : instruction(r.message, ac, phrase).text);
-  addLog('pilot', r.message.to, readback(r.message, ac, phrase).text);
+  const rb = readback(r.message, ac, phrase);
+  addLog('pilot', r.message.to, rb.text);
+  radioVoice.say(r.message.to, rb.spoken);
   const issued = await session.issue(r.message);
   if (!issued.ok) addLog('error', r.message.to, issued.reason ?? 'not delivered');
 }
@@ -556,6 +620,7 @@ async function startTraffic(pack: AirspacePack, m: VideoMap): Promise<void> {
 }
 
 function stopTraffic(): void {
+  radioVoice.clear();
   session?.dispose();
   session = null;
   picture = null;
@@ -644,6 +709,11 @@ onMounted(async () => {
       areaOptions.value = buildAreaOptions(AREAS, packs, !!import.meta.env.DEV);
     })
     .catch(() => undefined);
+  if (reloadIsolatedFor(voiceMode.value)) return;
+  if (voiceMode.value !== 'off') {
+    window.addEventListener('pointerdown', armVoice);
+    window.addEventListener('keydown', armVoice);
+  }
   await loadArea(String(route.params.packId));
 });
 
@@ -652,6 +722,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey);
   if (frame) cancelAnimationFrame(frame);
   if (blinkTimer) clearInterval(blinkTimer);
+  window.removeEventListener('pointerdown', armVoice);
+  window.removeEventListener('keydown', armVoice);
+  radioVoice.dispose();
   session?.dispose();
   session = null;
 });
@@ -746,6 +819,16 @@ onBeforeUnmount(() => {
         <button class="btn" :class="{ active: traffic.vectorMinutes > 0 }" title="Speed vector (v)" @click="cycleVector">
           VEC {{ traffic.vectorMinutes }}
         </button>
+        <select
+          class="btn voice"
+          :value="voiceMode"
+          :title="voiceStatus?.error ?? 'Pilot voices'"
+          :class="{ bad: voiceStatus?.error }"
+          @change="setVoiceMode(($event.target as HTMLSelectElement).value)"
+        >
+          <option v-for="m in VOICE_MODES" :key="m" :value="m">{{ VOICE_LABELS[m] }}</option>
+        </select>
+        <span v-if="voiceNote" class="clock">{{ voiceNote }}</span>
       </div>
       <div v-if="selectedInfo" class="info">
         <div class="info-head">{{ selectedInfo.head }}</div>

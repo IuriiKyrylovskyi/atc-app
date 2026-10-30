@@ -64,7 +64,8 @@ Legend: ✅ usable in the product · 🧪 development / reference only · ❌ no
 | [Moonshine (paper)](https://arxiv.org/html/2509.02523v1) · [local STT models 2026](https://www.onresonant.com/resources/local-stt-models-2026) | On-device STT (default) |
 | [Vosk browser](https://github.com/ccoreilly/vosk-browser) | Low-end STT fallback |
 | [Whisper-ATC (TU Delft)](https://research.tudelft.nl/en/publications/whisper-atc-open-models-for-air-traffic-control-automatic-speech-) · [whisper-small-atc LoRA](https://huggingface.co/jsf3467v/whisper-small-atc-lora) | ATC-tuned Whisper |
-| [kokoro-js](https://www.npmjs.com/package/kokoro-js) | On-device TTS (default) |
+| [kokoro-js](https://www.npmjs.com/package/kokoro-js) · [Kokoro-82M ONNX model (Apache-2.0)](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX) | On-device TTS (Kokoro mode); the model downloads from Hugging Face on first use |
+| [Web Speech API: SpeechSynthesis](https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis) | System voices (default, no download) |
 | [Whisper API pricing](https://www.cartesia.ai/learn/openai-whisper-api-pricing) · [STT API pricing 2026](https://convertaudiototext.com/blog/speech-to-text-api-pricing-2026) · [GPT transcribe comparison](https://www.digitalapplied.com/blog/openai-gpt-transcribe-stt-model-comparison-2026) | Online STT costs (PAID-ALT) |
 | [Google Cloud TTS pricing](https://cloud.google.com/text-to-speech/pricing) · [Azure Speech pricing](https://azure.microsoft.com/pricing/details/cognitive-services/speech-services) | Online TTS costs (PAID-ALT) |
 

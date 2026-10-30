@@ -95,16 +95,34 @@ function createWindow() {
   // ── Content Security Policy ────────────────────────────────────────────
   // Blocks inline scripts and restricts resource origins.
   // Tighten connect-src once you know your exact Supabase + RC endpoints.
+  // Kokoro pilot voices: 'wasm-unsafe-eval' compiles the ONNX runtime, the model
+  // downloads once from Hugging Face (redirects to *.hf.co).
+  // Cross-origin isolation for the radar scope only (app src/utils/isolation.ts):
+  // the document loaded as `?coi=1` gets COOP + COEP, everything else from the
+  // app gets COEP so the isolated page may start its workers. file:// (packaged
+  // app) never reaches this hook: there Kokoro runs single-threaded.
 session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      const isolation: Record<string, string[]> = {};
+      if (details.resourceType === 'mainFrame' && /[?&]coi=1\b/.test(details.url)) {
+        isolation['Cross-Origin-Opener-Policy'] = ['same-origin'];
+        isolation['Cross-Origin-Embedder-Policy'] = ['credentialless'];
+      } else if (details.resourceType !== 'mainFrame' && details.resourceType !== 'subFrame') {
+        const devServer = process.env.VITE_DEV_SERVER_URL;
+        if (devServer && details.url.startsWith(devServer)) {
+          isolation['Cross-Origin-Embedder-Policy'] = ['credentialless'];
+        }
+      }
       callback({
         responseHeaders: {
           ...details.responseHeaders,
+          ...isolation,
           'Content-Security-Policy': [
             "default-src 'self'",
-            "script-src 'self' https://cdn.paddle.com https://pay.rev.cat https://checkout.paddle.com",
+            "script-src 'self' 'wasm-unsafe-eval' https://cdn.paddle.com https://pay.rev.cat https://checkout.paddle.com",
+            "worker-src 'self' blob:",
             "style-src 'self' 'unsafe-inline'", // Vuetify needs inline styles
             "img-src 'self' data: blob: https://cdn.paddle.com https://pay.rev.cat",
-            "connect-src 'self' https://*.supabase.co https://api.revenuecat.com https://api.paddle.com https://checkout.paddle.com https://pay.rev.cat https://cdn.paddle.com https://e.revenue.cat",
+            "connect-src 'self' https://*.supabase.co https://api.revenuecat.com https://api.paddle.com https://checkout.paddle.com https://pay.rev.cat https://cdn.paddle.com https://e.revenue.cat https://huggingface.co https://*.huggingface.co https://*.hf.co",
             "font-src 'self' data:",
             "media-src 'self' blob:",
             "frame-src 'self' https://checkout.paddle.com https://pay.rev.cat https://cdn.paddle.com",

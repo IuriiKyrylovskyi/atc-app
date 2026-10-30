@@ -67,3 +67,24 @@ export function logEntryFromSim(e: SimEvent): LogEntryVM | null {
 /** The log lines of one snapshot's events, in order. */
 export const logEntriesFromSim = (events: readonly SimEvent[]): LogEntryVM[] =>
   events.map(logEntryFromSim).filter((l): l is LogEntryVM => l !== null);
+
+/** What a pilot says on frequency on their own (not a readback), as text-to-speech input. */
+export interface PilotTransmissionVM {
+  callsign: string;
+  spoken: string;
+}
+
+export function pilotTransmissionFromSim(e: SimEvent): PilotTransmissionVM | null {
+  switch (e.type) {
+    case 'clearance_rejected':
+      return { callsign: e.callsign, spoken: unable(e.callsign, e.reason).spoken };
+    case 'missed_approach':
+      return { callsign: e.callsign, spoken: `going around, ${radioCallsign(e.callsign).spoken}` };
+    default:
+      return null;
+  }
+}
+
+/** Pilot transmissions of one snapshot's events, in order. */
+export const pilotTransmissionsFromSim = (events: readonly SimEvent[]): PilotTransmissionVM[] =>
+  events.map(pilotTransmissionFromSim).filter((t): t is PilotTransmissionVM => t !== null);

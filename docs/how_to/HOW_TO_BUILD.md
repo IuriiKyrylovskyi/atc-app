@@ -99,6 +99,23 @@ pnpm build:app
 pnpm build:electron
 ```
 
+### Web hosting headers for Kokoro pilot voices
+
+With VOICE KOKORO the radar scope reloads itself as `index.html?coi=1` to run
+Kokoro multi-threaded (about twice as fast). The host must then send, for that
+document only:
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: credentialless
+```
+
+and `Cross-Origin-Embedder-Policy: credentialless` on the worker scripts
+(`assets/*.worker-*.js`). Never send them for `index.html` without `?coi=1`:
+the RevenueCat / Stripe checkout iframes do not opt in to COEP and would be
+blocked. A host without these headers still works; Kokoro just runs
+single-threaded. The Vite dev servers (5273 / 5274) already do this.
+
 ### Package Electron installer (dmg / exe / AppImage)
 
 ```bash
