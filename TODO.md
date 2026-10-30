@@ -136,6 +136,8 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [ ] WebGPU fp32 (≈ 326 MB) as an option for strong GPUs; shorter pilot reaction gap once the pilot model owns it
 - [ ] Keep the 21.6 MB ONNX WASM out of mobile builds (CDN or on-demand)
 - [ ] Pilot model: reaction delay, "unable", requests
+- [ ] espeak-ng (GPL-3.0) ships inside Kokoro's `phonemizer` (and Piper's): legal decision, or a closed-vocabulary pronunciation dictionary (CMUdict BSD-2 + airline names) — docs/research/TTS_KOKORO_VS_PIPER.md
+- [ ] Benchmark Piper int8 (VCTK 109 speakers, LibriTTS-R; ≈ 23 MB each, CC-BY 4.0) behind the same `Synthesize` worker interface as a mobile / Safari / low-end voice tier
 
 ## Phase 3 — Voice engines
 
