@@ -130,7 +130,9 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [x] Speech engines (`packages/voice` tts/): system voices (Web Speech) + Kokoro-82M in a Web Worker (q8, ≈ 92 MB once from Hugging Face), one-at-a-time radio channel with a queue
 - [x] Per-callsign voice (gender, accent by operator, pitch, pace) + VHF radio effect (band-pass, soft clip, carrier hiss, squelch tail; system voices get only carrier and squelch)
 - [x] Scope: VOICE OFF / SYS / KOKORO (remembered); readbacks, "unable", "say again" and go-arounds spoken; TX indicator
-- [ ] Kokoro runtime check on a real device (model download + latency); keep the 21.6 MB ONNX WASM out of mobile builds (CDN or on-demand)
+- [x] Kokoro runtime check (Chrome, 10-core Mac, q8 WASM): model download + load ≈ 20 s first time, < 1.5 s cached; synthesis 1.6× slower than real time single-threaded (4.5 s readback starts ≈ 7.8 s after Enter), 0.8× with cross-origin isolation (multi-thread WASM)
+- [ ] Kokoro latency: stream by clause (play the first clause while the rest synthesises); decide on cross-origin isolation (COOP / COEP credentialless — check RevenueCat web checkout and OAuth popups); WebGPU fp32 (≈ 326 MB) as an option for strong GPUs
+- [ ] Keep the 21.6 MB ONNX WASM out of mobile builds (CDN or on-demand)
 - [ ] Pilot model: reaction delay, "unable", requests
 
 ## Phase 3 — Voice engines
