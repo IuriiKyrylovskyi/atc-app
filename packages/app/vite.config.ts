@@ -5,6 +5,7 @@ import vuetify from 'vite-plugin-vuetify';
 import { fileURLToPath } from 'url';
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { execFileSync } from 'child_process';
+import { createRequire } from 'module';
 
 const rootPkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
 
@@ -69,12 +70,17 @@ const crossOriginIsolation = (): Plugin => ({
         res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
         res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
       } else if (dest === 'worker') {
-        res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
-      }
+        res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');      }
       next();
     });
   },
 });
+
+// ONNX Runtime files shipped inside transformers.js (dist/ort-wasm-*), for
+// src/workers/onnxRuntime.ts. Resolved from the voice package, which depends on it.
+const ONNX_RUNTIME_DIR = path.dirname(
+  createRequire(path.resolve(__dirname, '../voice/package.json')).resolve('@huggingface/transformers')
+);
 
 export default defineConfig(({ mode }) => {
   // Capacitor sets this env var during build if you use their CLI,
@@ -99,6 +105,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
+        '@onnx-runtime': ONNX_RUNTIME_DIR,
         ...(!isNative
           ? {
               // Web/Electron: stub native-only mobile packages.
@@ -134,6 +141,8 @@ export default defineConfig(({ mode }) => {
     },
     // Module workers: the Kokoro worker lazy-imports kokoro-js (code splitting).
     worker: { format: 'es' },
+    // `@onnx-runtime/*?url` are plain files (URLs), not dependencies to pre-bundle.
+    optimizeDeps: { exclude: ['@onnx-runtime'] },
     build: {
       outDir: 'dist',
       assetsDir: 'assets',

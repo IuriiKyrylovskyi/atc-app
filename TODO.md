@@ -134,7 +134,8 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [x] Kokoro latency: clause streaming (first clause plays while the rest synthesises) + cross-origin isolation of the scope page only (`?coi=1`: COOP + COEP credentialless from the Vite dev servers and Electron dev; leaving the scope reloads unisolated, so the RevenueCat / Stripe checkout iframes — no COEP / CORP headers — are never blocked). Readback starts ≈ 3.1 s after Enter (was 7.8–11.5 s), clauses back to back
 - [ ] Isolation headers on production web hosting (`index.html?coi=1`) and packaged Electron (file:// gets no headers: needs a custom app:// protocol); Safari has no COEP credentialless (stays single-threaded)
 - [ ] WebGPU fp32 (≈ 326 MB) as an option for strong GPUs; shorter pilot reaction gap once the pilot model owns it
-- [ ] Keep the 21.6 MB ONNX WASM out of mobile builds (CDN or on-demand)
+- [x] ONNX Runtime WASM + loader served by the app (`workers/onnxRuntime.ts`), not transformers.js's jsdelivr default: the Electron CSP blocked it ("no available backend found"), and it needed the network on every load
+- [ ] Keep the 21.6 MB ONNX WASM out of mobile builds (own CDN / Supabase Storage or on-demand; then add that host to the Electron CSP)
 - [ ] Pilot model: reaction delay, "unable", requests
 
 ## Phase 3 — Voice engines

@@ -3,6 +3,7 @@
  * thread (inference would otherwise stall the scope). See services/radioVoice.ts.
  */
 import { loadKokoro, type Synthesize } from '@atc-app/voice';
+import { ONNX_WASM_PATHS } from './onnxRuntime';
 
 export type TtsRequest =
   | { op: 'load'; device: 'wasm' | 'webgpu' }
@@ -27,6 +28,7 @@ scope.addEventListener('message', async (e: MessageEvent<TtsRequest>) => {
   if (req.op === 'load') {
     synth ??= loadKokoro({
       device: req.device,
+      wasmPaths: ONNX_WASM_PATHS,
       onProgress: (fraction) => reply({ type: 'progress', fraction }),
     });
     synth.then(

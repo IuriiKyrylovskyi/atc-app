@@ -3,6 +3,7 @@
  * off the UI thread. See services/controllerMic.ts.
  */
 import { loadMoonshine, type Transcribe } from '@atc-app/voice';
+import { ONNX_WASM_PATHS } from './onnxRuntime';
 
 export type SttRequest =
   | { op: 'load'; device: 'wasm' | 'webgpu' }
@@ -27,6 +28,7 @@ scope.addEventListener('message', async (e: MessageEvent<SttRequest>) => {
   if (req.op === 'load') {
     transcribe ??= loadMoonshine({
       device: req.device,
+      wasmPaths: ONNX_WASM_PATHS,
       onProgress: (fraction) => reply({ type: 'progress', fraction }),
     });
     transcribe.then(

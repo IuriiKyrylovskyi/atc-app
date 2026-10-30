@@ -64,6 +64,12 @@ declare module '*.webp' {
   export default src;
 }
 
+// Vite `?url` imports (ONNX Runtime files, src/workers/onnxRuntime.ts)
+declare module '*?url' {
+  const url: string;
+  export default url;
+}
+
 // Audio imports
 declare module '*.mp3' {
   const value: string;

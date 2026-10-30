@@ -43,5 +43,6 @@ export * from './command';
 export * from './normalise';
 export * from './grammar';
 export * from './transmission';
+export * from './onnx';
 export * from './tts';
 export * from './stt';

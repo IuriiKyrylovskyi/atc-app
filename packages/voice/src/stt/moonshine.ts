@@ -10,6 +10,7 @@
  * accented English, no download, ≈ $0.00067 per audio minute.
  */
 import { byteProgress, type ModelProgressEvent } from '../download';
+import { useOnnxWasm, type OnnxWasmPaths } from '../onnx';
 import { STT_SAMPLE_RATE } from './audio';
 import type { Transcribe } from './recognizer';
 
@@ -21,6 +22,8 @@ export interface MoonshineLoadOptions {
   /** 'webgpu' takes fp32 (≈ 250 MB); 'wasm' takes q8. */
   device?: 'wasm' | 'webgpu';
   onProgress?: (fraction: number) => void;
+  /** ONNX Runtime files served by the app (default: transformers.js's CDN). */
+  wasmPaths?: OnnxWasmPaths;
 }
 
 /** The part of transformers.js we use (typed here: its types need `bundler` resolution, the app uses `node`). */
@@ -36,6 +39,7 @@ interface TransformersModule {
 export async function loadMoonshine(opts: MoonshineLoadOptions = {}): Promise<Transcribe> {
   // @ts-ignore — resolvable under `bundler` (this package) but not `node` (the app); typed by TransformersModule.
   const { pipeline } = (await import('@huggingface/transformers')) as unknown as TransformersModule;
+  await useOnnxWasm(opts.wasmPaths);
   const device = opts.device ?? 'wasm';
   const asr = await pipeline('automatic-speech-recognition', MOONSHINE_MODEL, {
     dtype: device === 'webgpu' ? 'fp32' : 'q8',
