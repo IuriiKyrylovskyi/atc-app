@@ -106,6 +106,8 @@ export default defineConfig(({ mode }) => {
             }),
       },
     },
+    // Module workers: the Kokoro worker lazy-imports kokoro-js (code splitting).
+    worker: { format: 'es' },
     build: {
       outDir: 'dist',
       assetsDir: 'assets',
