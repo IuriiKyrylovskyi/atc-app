@@ -75,9 +75,34 @@ export async function loadKokoro(opts: KokoroLoadOptions = {}): Promise<Synthesi
   };
 }
 
+/** Pause between clauses, s (a comma in the readback). */
+const CLAUSE_PAUSE_S = 0.12;
+
+/**
+ * Splits a transmission at commas so the first clause can play while the rest
+ * is synthesised. Pieces shorter than `minChars` ("unable") join the next one.
+ */
+export function clauses(text: string, minChars = 12): string[] {
+  const out: string[] = [];
+  let carry = '';
+  for (const piece of text.split(/,\s*/)) {
+    const p = carry ? `${carry}, ${piece}` : piece;
+    if (p.trim().length < minChars) carry = p;
+    else {
+      out.push(p.trim());
+      carry = '';
+    }
+  }
+  if (carry.trim()) {
+    if (out.length) out[out.length - 1] += `, ${carry.trim()}`;
+    else out.push(carry.trim());
+  }
+  return out;
+}
+
 export class KokoroEngine implements SpeechEngine {
   readonly id = 'kokoro';
-  private current: AudioBufferSourceNode | null = null;
+  private playing: AudioBufferSourceNode[] = [];
   private generation = 0;
 
   constructor(
@@ -86,29 +111,55 @@ export class KokoroEngine implements SpeechEngine {
     private readonly radio: RadioFx
   ) {}
 
+  /**
+   * Streams clause by clause: synthesise clause 1, start it, synthesise clause 2
+   * while 1 plays, queue it on the audio clock right after, and so on. One
+   * synthesis at a time (the worker runs one model).
+   */
   async speak(text: string, voice: PilotVoice): Promise<void> {
     const gen = ++this.generation;
-    const pcm = await this.synth(text, voice.kokoroVoice, voice.kokoroSpeed);
-    if (gen !== this.generation || pcm.samples.length === 0) return;
-    if (this.ctx.state === 'suspended') await this.ctx.resume();
-    const buffer = this.ctx.createBuffer(1, pcm.samples.length, pcm.sampleRate);
-    buffer.copyToChannel(pcm.samples, 0);
-    const src = this.ctx.createBufferSource();
-    src.buffer = buffer;
-    src.connect(this.radio.input);
-    this.current = src;
-    await new Promise<void>((resolve) => {
-      src.onended = () => resolve();
-      this.radio.keyUp();
-      src.start(this.ctx.currentTime + 0.05);
-    });
+    const parts = clauses(text);
+    const say = (t: string) => {
+      const p = this.synth(t, voice.kokoroVoice, voice.kokoroSpeed);
+      p.catch(() => undefined); // a cancelled look-ahead must not surface as unhandled
+      return p;
+    };
+    let next = parts.length ? say(parts[0]!) : null;
+    let at = 0;
+    let ended: Promise<void> | null = null;
+    for (let i = 0; next; i++) {
+      const pcm = await next;
+      if (gen !== this.generation) return;
+      next = i + 1 < parts.length ? say(parts[i + 1]!) : null;
+      if (pcm.samples.length === 0) continue;
+      if (this.ctx.state === 'suspended') await this.ctx.resume();
+      const buffer = this.ctx.createBuffer(1, pcm.samples.length, pcm.sampleRate);
+      buffer.copyToChannel(pcm.samples, 0);
+      const src = this.ctx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(this.radio.input);
+      if (!ended) {
+        this.radio.keyUp();
+        at = this.ctx.currentTime + 0.05;
+      } else {
+        // Synthesis slower than speech: carry on as soon as it is ready (a hesitation, carrier still up).
+        at = Math.max(at, this.ctx.currentTime + 0.02);
+      }
+      ended = new Promise<void>((resolve) => (src.onended = () => resolve()));
+      src.start(at);
+      at += buffer.duration + CLAUSE_PAUSE_S;
+      this.playing.push(src);
+    }
+    if (ended) await ended;
+    if (gen !== this.generation) return;
     this.radio.keyDown();
-    if (this.current === src) this.current = null;
+    this.playing = [];
   }
 
   cancel(): void {
     this.generation++;
-    this.current?.stop();
-    this.current = null;
+    for (const src of this.playing) src.stop();
+    if (this.playing.length) this.radio.keyDown();
+    this.playing = [];
   }
 }

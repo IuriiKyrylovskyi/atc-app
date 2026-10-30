@@ -18,6 +18,7 @@ import { progressService } from '@/services/progress';
 import { ROUTE_TO_PAGE } from '@/composables/usePageName';
 import { useStripPageTransition } from '@/composables/useStripPageTransition';
 import { ENV } from '@/config/env';
+import { isolationRequested, isolationUrl } from '@/utils/isolation';
 
 const SCOPE_ENABLED = import.meta.env.DEV || ENV.VITE_FEATURE_SCOPE === 'true';
 import { getAirportById } from '@/game/config/airports.config';
@@ -227,6 +228,14 @@ const historyPosition = (): number | null => {
 
 router.afterEach(() => {
   positionAfterLastNavigation = historyPosition();
+});
+
+// Only the radar scope runs cross-origin isolated (utils/isolation.ts): leaving
+// it reloads the app unisolated, so the paywall's checkout iframes are never blocked.
+router.beforeEach((to) => {
+  if (!isolationRequested() || to.name === 'Scope') return true;
+  window.location.replace(isolationUrl(false, `#${to.fullPath}`));
+  return false;
 });
 
 // Registered BEFORE the monetization guard so a stray back into a game never

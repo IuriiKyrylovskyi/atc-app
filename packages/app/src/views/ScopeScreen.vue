@@ -52,7 +52,13 @@ import {
 import { loadPack, loadPackManifest } from '@/services/packLoader';
 import { AREAS } from '@/config/areas';
 import { SIM_RATES, SimSession, type SimRate } from '@/services/simSession';
-import { RadioVoice, VOICE_MODES, type RadioVoiceStatus, type VoiceMode } from '@/services/radioVoice';
+import {
+  RadioVoice,
+  VOICE_MODES,
+  type RadioVoiceStatus,
+  type VoiceMode,
+} from '@/services/radioVoice';
+import { isolationRequested, isolationUrl } from '@/utils/isolation';
 import {
   aircraftDetail,
   aircraftFromSim,
@@ -133,7 +139,9 @@ const VOICE_LABELS: Record<VoiceMode, string> = {
   kokoro: `VOICE KOKORO (${KOKORO_DOWNLOAD_MB} MB once)`,
 };
 const storedVoice = stored(VOICE_KEY);
-const voiceMode = ref<VoiceMode>(VOICE_MODES.includes(storedVoice as VoiceMode) ? (storedVoice as VoiceMode) : 'off');
+const voiceMode = ref<VoiceMode>(
+  VOICE_MODES.includes(storedVoice as VoiceMode) ? (storedVoice as VoiceMode) : 'off'
+);
 const voiceStatus = shallowRef<RadioVoiceStatus | null>(null);
 const radioVoice = new RadioVoice((s) => (voiceStatus.value = s));
 let voiceArmed = false;
@@ -147,9 +155,20 @@ function armVoice(): void {
   radioVoice.setMode(voiceMode.value);
 }
 
+/**
+ * Kokoro runs twice as fast cross-origin isolated: reload the scope as `?coi=1`
+ * (once — a server without the headers gives a normal page; see utils/isolation).
+ */
+function reloadIsolatedFor(mode: VoiceMode): boolean {
+  if (mode !== 'kokoro' || window.crossOriginIsolated || isolationRequested()) return false;
+  window.location.replace(isolationUrl(true));
+  return true;
+}
+
 function setVoiceMode(mode: string): void {
   voiceMode.value = VOICE_MODES.includes(mode as VoiceMode) ? (mode as VoiceMode) : 'off';
   store(VOICE_KEY, voiceMode.value);
+  if (reloadIsolatedFor(voiceMode.value)) return;
   voiceArmed = true;
   radioVoice.setMode(voiceMode.value);
 }
@@ -690,6 +709,7 @@ onMounted(async () => {
       areaOptions.value = buildAreaOptions(AREAS, packs, !!import.meta.env.DEV);
     })
     .catch(() => undefined);
+  if (reloadIsolatedFor(voiceMode.value)) return;
   if (voiceMode.value !== 'off') {
     window.addEventListener('pointerdown', armVoice);
     window.addEventListener('keydown', armVoice);

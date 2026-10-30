@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   KOKORO_VOICES,
+  KokoroEngine,
   RadioChannel,
+  clauses,
   hash32,
   pickSystemVoice,
   pilotVoice,
@@ -143,6 +145,99 @@ describe('radio channel', () => {
     const muted = new RadioChannel(null, { sleep: noSleep });
     muted.say('DAL1192', 'nothing');
     expect(muted.waiting).toHaveLength(0);
+  });
+});
+
+describe('Kokoro streaming', () => {
+  it('splits at commas and keeps short pieces with their neighbours', () => {
+    expect(clauses('turn left heading two two zero, descend and maintain six thousand, Delta one one niner two')).toEqual([
+      'turn left heading two two zero',
+      'descend and maintain six thousand',
+      'Delta one one niner two',
+    ]);
+    expect(clauses('unable, above our ceiling, Delta one one niner two')).toEqual([
+      'unable, above our ceiling',
+      'Delta one one niner two',
+    ]);
+    expect(clauses('say again, KLM 6')).toEqual(['say again, KLM 6']);
+  });
+
+  /** Audio clock that runs only when told; sources end when the clock passes them. */
+  function fakeAudio() {
+    const started: { at: number; dur: number; src: { onended: (() => void) | null } }[] = [];
+    const ctx = {
+      currentTime: 0,
+      state: 'running',
+      resume: async () => undefined,
+      createBuffer: (_ch: number, n: number, rate: number) => ({ duration: n / rate, copyToChannel: () => undefined }),
+      createBufferSource: () => {
+        const src = {
+          buffer: null as { duration: number } | null,
+          onended: null as (() => void) | null,
+          connect: () => undefined,
+          start: (at: number) => started.push({ at, dur: src.buffer!.duration, src }),
+          stop: () => src.onended?.(),
+        };
+        return src;
+      },
+    };
+    const advance = (t: number) => {
+      ctx.currentTime = t;
+      for (const s of started) if (s.at + s.dur <= t && s.src.onended) {
+        const end = s.src.onended;
+        s.src.onended = null;
+        end();
+      }
+    };
+    const keys: string[] = [];
+    const radio = { input: {}, keyUp: () => keys.push('up'), keyDown: () => keys.push('down') };
+    return { ctx, radio, started, advance, keys };
+  }
+
+  it('plays clause 1 while clause 2 synthesises, back to back on the audio clock', async () => {
+    const a = fakeAudio();
+    const asked: string[] = [];
+    const pending: ((pcm: { samples: Float32Array<ArrayBuffer>; sampleRate: number }) => void)[] = [];
+    const synth = (text: string) =>
+      new Promise<{ samples: Float32Array<ArrayBuffer>; sampleRate: number }>((resolve) => {
+        asked.push(text);
+        pending.push(resolve);
+      });
+    const engine = new KokoroEngine(a.ctx as never, synth, a.radio as never);
+    const done = engine.speak('reduce speed to two one zero, Delta one one niner two', pilotVoice('DAL1192'));
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+
+    await tick();
+    expect(asked).toEqual(['reduce speed to two one zero']);
+    pending[0]!({ samples: new Float32Array(24_000 * 2), sampleRate: 24_000 }); // 2 s
+    await tick();
+    // Clause 1 is playing and clause 2 already asked for.
+    expect(a.started).toHaveLength(1);
+    expect(a.started[0]!.at).toBeCloseTo(0.05);
+    expect(asked).toHaveLength(2);
+    pending[1]!({ samples: new Float32Array(24_000), sampleRate: 24_000 }); // 1 s
+    await tick();
+    // Queued right after clause 1 plus the comma pause.
+    expect(a.started[1]!.at).toBeCloseTo(0.05 + 2 + 0.12);
+    a.advance(10);
+    await done;
+    expect(a.keys).toEqual(['up', 'down']);
+  });
+
+  it('cancel stops scheduled clauses and drops the look-ahead', async () => {
+    const a = fakeAudio();
+    const pending: ((pcm: { samples: Float32Array<ArrayBuffer>; sampleRate: number }) => void)[] = [];
+    const synth = () => new Promise<{ samples: Float32Array<ArrayBuffer>; sampleRate: number }>((r) => pending.push(r));
+    const engine = new KokoroEngine(a.ctx as never, synth, a.radio as never);
+    const done = engine.speak('turn left heading two two zero, descend and maintain six thousand', pilotVoice('DAL1192'));
+    await new Promise((r) => setTimeout(r, 0));
+    pending[0]!({ samples: new Float32Array(24_000), sampleRate: 24_000 });
+    await new Promise((r) => setTimeout(r, 0));
+    engine.cancel();
+    pending[1]!({ samples: new Float32Array(24_000), sampleRate: 24_000 });
+    await done;
+    expect(a.started).toHaveLength(1);
+    expect(a.keys).toEqual(['up', 'down']);
   });
 });
 
