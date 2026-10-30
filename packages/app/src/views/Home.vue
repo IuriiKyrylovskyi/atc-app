@@ -25,7 +25,16 @@ const monetization = useMonetizationStore();
 const enterControlCenter = () =>
   router.push({ name: 'Control Center', params: { pageNumber: '1' } });
 
+// START GAME opens the radar scope on Kyiv. The Kyiv pack (EUROCONTROL ERC) is
+// development-only and does not ship, so other builds keep the legacy level
+// start below.
+const START_SCOPE_PACK = 'kyiv';
+
 const quickPlay = () => {
+  if (import.meta.env.DEV && router.hasRoute('Scope')) {
+    router.push({ name: 'Scope', params: { packId: START_SCOPE_PACK } });
+    return;
+  }
   // Start Game redirects to the NEXT shift after the last one the user
   // COMPLETED (`profiles.last_passed_level`, a `[airport]:[shift]` string),
   // e.g. a user who cleared `WADD:Midday Mix` lands on `/play/WADD/Evening
