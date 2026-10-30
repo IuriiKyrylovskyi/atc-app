@@ -10,6 +10,7 @@
  *   proxy) for PCM and plays it through `RadioFx`.
  */
 import { byteProgress, type ModelProgressEvent } from '../download';
+import { useOnnxWasm, type OnnxWasmPaths } from '../onnx';
 import type { SpeechEngine } from './channel';
 import type { RadioFx } from './radio';
 import type { PilotVoice } from './voices';
@@ -30,6 +31,8 @@ export interface KokoroLoadOptions {
   device?: 'wasm' | 'webgpu';
   /** Download / load progress, 0–1. */
   onProgress?: (fraction: number) => void;
+  /** ONNX Runtime files served by the app (default: transformers.js's CDN). */
+  wasmPaths?: OnnxWasmPaths;
 }
 
 /** The part of kokoro-js we use (typed here: its types need `bundler` resolution, the app uses `node`). */
@@ -52,6 +55,7 @@ interface KokoroModule {
 export async function loadKokoro(opts: KokoroLoadOptions = {}): Promise<Synthesize> {
   // @ts-ignore — resolvable under `bundler` (this package) but not `node` (the app); typed by KokoroModule.
   const { KokoroTTS } = (await import('kokoro-js')) as unknown as KokoroModule;
+  await useOnnxWasm(opts.wasmPaths);
   const device = opts.device ?? 'wasm';
   const tts = await KokoroTTS.from_pretrained(KOKORO_MODEL, {
     dtype: device === 'webgpu' ? 'fp32' : 'q8',
