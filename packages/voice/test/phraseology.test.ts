@@ -62,6 +62,18 @@ describe('transcript normaliser', () => {
     ['centre', 'center'],
     ['x-ray alfa juliet', 'xray alpha juliett'],
     ['three thousand ft', '3 thousand feet'],
+    // Group words a speech engine may write.
+    ['Delta eleven ninety two', 'delta 11 92'],
+    ['heading two seventy', 'heading 2 70'],
+    ['reduce speed to two hundred fifty knots', 'reduce speed to 250 knots'],
+    ['two hundred fifty five', '255'],
+    ['flight level two hundred forty', 'flight level 240'],
+    ['five thousand five hundred', '5 thousand 5 hundred'],
+    ['twenty-one hundred', '21 hundred'],
+    ['ten twenty zero', '10 20 0'],
+    ['runway 4Ride', 'runway 4 right'],
+    ['runway 31left', 'runway 31 left'],
+    ['ryanair 8qk', 'ryanair 8qk'],
   ])('%s', (input, words) => {
     expect(normaliseTranscript(input).join(' ')).toBe(words);
   });
@@ -97,6 +109,17 @@ describe('callsigns', () => {
     expect(resolveCallsign(['1', '7', '7', '1'], CALLSIGNS)).toBe('UAL1771');
     expect(resolveCallsign(['2412'], ['AAL2412', 'UAL2412'])).toBe('ambiguous');
     expect(resolveCallsign(['hello'], CALLSIGNS)).toBeNull();
+  });
+
+  it('gets past a misheard operator name before a clear flight number', () => {
+    expect(resolveCallsign(['dell', 'to', '1192'], CALLSIGNS)).toBe('DAL1192');
+    const both = ['DAL1192', 'UAL1192'];
+    expect(resolveCallsign(['dell', 'to', '1192'], both)).toBe('DAL1192');
+    expect(resolveCallsign(['unite', 'it', '1192'], both)).toBe('UAL1192');
+    // Nothing like an operator name, or a number nobody has.
+    expect(resolveCallsign(['hello', '1192'], both)).toBeNull();
+    expect(resolveCallsign(['dell', 'to', '4444'], CALLSIGNS)).toBeNull();
+    expect(resolveCallsign(['contact', 'new', 'york', '1', '2'], CALLSIGNS)).toBeNull();
   });
 });
 
@@ -159,6 +182,14 @@ const HAND: [string, string, Clearance[]][] = [
   ['November one two alpha bravo charlie squawk 1 2 0 0', 'N12ABC', [{ kind: 'squawk', code: '1200' }]],
   ['Ukraine International 101 descend to FL 100 and reduce speed to 250 knots', 'AUI101', [alt(10_000), kt(250)]],
   ['Delta 1192 turn left heading 220, descend and maintain 3000, cleared ILS runway 4R approach', 'DAL1192', [hdg(220, 'left'), alt(3000), ils('04R')]],
+  // Speech-engine output: punctuation, capitals, group words.
+  ['Delta eleven ninety two, descend and maintain eight thousand.', 'DAL1192', [alt(8000)]],
+  ['United seventeen seventy one, turn right heading two seventy.', 'UAL1771', [hdg(270, 'right')]],
+  ['Speedbird one seventeen, reduce speed to two hundred fifty knots.', 'BAW117', [kt(250)]],
+  // Moonshine transcripts of macOS `say` audio.
+  ['Dell to 1192, descend and maintain 8,000', 'DAL1192', [alt(8000)]],
+  ['United 1771, turn left heading 270, reduce speed to 210 knots.', 'UAL1771', [hdg(270, 'left'), kt(210)]],
+  ['Delta 1192, cleared ILS Runway 4Ride approach.', 'DAL1192', [ils('04R')]],
 ];
 
 describe('hand corpus', () => {
@@ -194,7 +225,7 @@ describe('say again', () => {
     expect(r.callsign).toBe(callsign);
   });
 
-  it.each(['delta eleven ninety two descend 8000', 'hello world', 'United 9999 descend 8000'])('nobody answers: %s', (input) => {
+  it.each(['delta eleven ninety three descend 8000', 'hello world', 'United 9999 descend 8000'])('nobody answers: %s', (input) => {
     expect(failure(input).callsign).toBeUndefined();
   });
 

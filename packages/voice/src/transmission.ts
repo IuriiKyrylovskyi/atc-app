@@ -21,7 +21,7 @@ import type { Message } from '@atc-app/sim';
 import { parseCommand, type CommandContext } from './command';
 import { callsignLength, lexWords, parseItems, type SpokenItem, type SpokenNumber } from './grammar';
 import { normaliseTranscript } from './normalise';
-import { natoLetter, telephonyPrefix } from './telephony';
+import { TELEPHONY, natoLetter, telephonyPrefix } from './telephony';
 
 export interface TransmissionContext extends CommandContext {
   /** All fix identifiers, for matching names the speech engine spelled its own way. */
@@ -76,7 +76,7 @@ export function resolveCallsign(
   if (spelled && byUpper.has(spelled)) found.add(byUpper.get(spelled)!);
   if (found.size) return found.size === 1 ? [...found][0]! : 'ambiguous';
 
-  if (!spelled) return null;
+  if (!spelled) return misheardOperator(words, callsigns);
   // ICAO abbreviation of a registration: first character + at least the last two.
   if (spelled.length >= 3) {
     const abbr = callsigns.filter((c) => {
@@ -89,6 +89,33 @@ export function resolveCallsign(
   if (/^\d+$/.test(spelled)) {
     const ends = callsigns.filter((c) => c.toUpperCase().endsWith(spelled));
     if (ends.length) return ends.length === 1 ? ends[0]! : 'ambiguous';
+  }
+  return null;
+}
+
+/**
+ * A misheard operator name before a clear flight number (speech engines: "Dell
+ * to 1192" for "Delta 1192"): the aircraft with that number whose telephony
+ * name sounds like the words heard (consonant skeletons one edit apart).
+ */
+function misheardOperator(words: readonly string[], callsigns: readonly string[]): string | 'ambiguous' | null {
+  // The name is 1–3 words without digits, the flight number all the rest.
+  for (let i = 1; i <= Math.min(3, words.length - 1); i++) {
+    if (words.slice(0, i).some((w) => /\d/.test(w))) return null;
+    const number = chars(words.slice(i));
+    if (!number || !/^\d/.test(number)) continue;
+    const heard = skeleton(words.slice(0, i).join('').toUpperCase());
+    const near = callsigns.filter((c) => {
+      const u = c.toUpperCase();
+      const name = TELEPHONY[u.slice(0, 3)];
+      return (
+        isFlightNumber(u) &&
+        u.slice(3) === number &&
+        name !== undefined &&
+        editDistance(skeleton(name.replace(/[^a-z]/gi, '').toUpperCase()), heard) <= 1
+      );
+    });
+    return near.length === 0 ? null : near.length === 1 ? near[0]! : 'ambiguous';
   }
   return null;
 }

@@ -9,6 +9,7 @@
  * - `KokoroEngine` runs on the page: asks a `Synthesize` (usually a worker
  *   proxy) for PCM and plays it through `RadioFx`.
  */
+import { byteProgress, type ModelProgressEvent } from '../download';
 import type { SpeechEngine } from './channel';
 import type { RadioFx } from './radio';
 import type { PilotVoice } from './voices';
@@ -39,7 +40,7 @@ interface KokoroModule {
       opts: {
         dtype: 'fp32' | 'q8';
         device: 'wasm' | 'webgpu';
-        progress_callback: (p: { status: string; file?: string; loaded?: number; total?: number }) => void;
+        progress_callback: (p: ModelProgressEvent) => void;
       }
     ): Promise<{
       generate(text: string, opts: { voice: string; speed: number }): Promise<{ audio: Float32Array; sampling_rate: number }>;
@@ -52,22 +53,10 @@ export async function loadKokoro(opts: KokoroLoadOptions = {}): Promise<Synthesi
   // @ts-ignore — resolvable under `bundler` (this package) but not `node` (the app); typed by KokoroModule.
   const { KokoroTTS } = (await import('kokoro-js')) as unknown as KokoroModule;
   const device = opts.device ?? 'wasm';
-  // Several files download at once; report the overall share of bytes.
-  const files = new Map<string, { loaded: number; total: number }>();
   const tts = await KokoroTTS.from_pretrained(KOKORO_MODEL, {
     dtype: device === 'webgpu' ? 'fp32' : 'q8',
     device,
-    progress_callback: (p) => {
-      if (p.status !== 'progress' || !p.file || !p.total) return;
-      files.set(p.file, { loaded: p.loaded ?? 0, total: p.total });
-      let loaded = 0;
-      let total = 0;
-      for (const f of files.values()) {
-        loaded += f.loaded;
-        total += f.total;
-      }
-      opts.onProgress?.(total ? loaded / total : 0);
-    },
+    progress_callback: byteProgress(opts.onProgress),
   });
   return async (text, voice, speed) => {
     const audio = await tts.generate(text, { voice, speed });

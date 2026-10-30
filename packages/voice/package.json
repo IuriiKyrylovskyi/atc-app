@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@atc-app/sim": "workspace:*",
+    "@huggingface/transformers": "^3.8.1",
     "chevrotain": "^11.2.0",
     "kokoro-js": "^1.2.1"
   },

@@ -62,6 +62,8 @@ Legend: ✅ usable in the product · 🧪 development / reference only · ❌ no
 | Link | Use |
 |---|---|
 | [Moonshine (paper)](https://arxiv.org/html/2509.02523v1) · [local STT models 2026](https://www.onresonant.com/resources/local-stt-models-2026) | On-device STT (default) |
+| [moonshine-base ONNX model (MIT)](https://huggingface.co/onnx-community/moonshine-base-ONNX) · [transformers.js](https://huggingface.co/docs/transformers.js) | On-device STT (MIC MOONSHINE mode): q8 encoder + merged decoder ≈ 63 MB from Hugging Face on first use |
+| [Web Speech API: SpeechRecognition](https://developer.mozilla.org/en-US/docs/Web/API/SpeechRecognition) | Browser STT (MIC BROWSER mode, no download; Chrome/Edge send audio to their servers, not in Firefox/Electron) |
 | [Vosk browser](https://github.com/ccoreilly/vosk-browser) | Low-end STT fallback |
 | [Whisper-ATC (TU Delft)](https://research.tudelft.nl/en/publications/whisper-atc-open-models-for-air-traffic-control-automatic-speech-) · [whisper-small-atc LoRA](https://huggingface.co/jsf3467v/whisper-small-atc-lora) | ATC-tuned Whisper |
 | [kokoro-js](https://www.npmjs.com/package/kokoro-js) · [Kokoro-82M ONNX model (Apache-2.0)](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX) | On-device TTS (Kokoro mode); the model downloads from Hugging Face on first use |

@@ -139,13 +139,21 @@ the defaults below; the open items are only about paid upgrades or permissions.
 
 ## Phase 3 — Voice engines
 
-- [ ] Push-to-talk UX (space bar, on-screen hold button) + mic permissions (web, Electron, iOS, Android)
-- [ ] Audio capture 16 kHz mono + VAD trimming
-- [ ] `SpeechToText` interface + embedded engine (Moonshine / Whisper via transformers.js, whisper.cpp in Electron)
+- [x] Push-to-talk UX: hold ` (Backquote — space is pause) or the on-screen PTT button (pointer/touch); works while typing; window blur ends the transmission; MIC OFF / BROWSER / MOONSHINE selector remembered (`atc.scope.mic`)
+- [x] Mic permissions on web and Electron (getUserMedia; Electron allows media by default, macOS `NSMicrophoneUsageDescription` already in electron-builder.yml)
+- [ ] Mic permissions on iOS / Android once the native projects exist (`NSMicrophoneUsageDescription`, `RECORD_AUDIO`); packaged macOS: check hardened-runtime `com.apple.security.device.audio-input` entitlement
+- [x] Audio capture (stt/capture.ts): mic opened on first press and kept open, 300 ms pre-roll, 250 ms tail, echo cancellation on (pilots on the speakers) → resample to 16 kHz mono → energy VAD trim (no speech → nothing sent; Whisper-style "Thank you." on silence avoided)
+- [x] `SpeechToText` interface (PTT shaped: start / stop → n-best transcript) + `PcmRecognizer` (any PCM model) + `WebSpeechRecognizer` (browser, n-best, continuous segments joined)
+- [x] Embedded engine: Moonshine base q8 (≈ 63 MB) via transformers.js in `stt.worker.ts`, warmed up on load; shares the ONNX WASM with Kokoro; runs isolated (`?coi=1`) like Kokoro
+  - Measured (Chrome, 10-core Mac, isolated): cached load ≈ 1 s; 3–5 s transmission → text in 250–400 ms; PTT release → readback ≈ 650 ms incl. the 250 ms tail
+  - macOS `say` test audio: "Delta eleven ninety two…" → "Dell to 1192, descend and maintain 8,000" (resolved), "…runway four right…" → "Runway 4Ride" (normalised)
+- [ ] Whisper (base.en / small, prompt biasing) as a second embedded engine; whisper.cpp in Electron
 - [ ] Model tiers + lazy download + caching (OPFS / Cache Storage / app files)
 - [ ] Device capability detection → tier A/B/C/D (§11.2)
-- [ ] Context biasing (live callsigns, fixes, runways, frequencies)
-- [ ] Grammar re-scoring of n-best results
+- [ ] Context biasing (live callsigns, fixes, runways, frequencies) — today only after the fact: fuzzy callsign / fix matching
+- [x] Grammar re-scoring of n-best results (`pickTranscript`: first alternative the parser understands)
+- [x] Speech-engine output in the parser: group number words ("eleven ninety two", "two hundred fifty"), glued / misheard runway sides ("4Ride"), misheard operator names before a clear flight number ("Dell to 1192" → DAL1192, by sound)
+- [ ] Real-microphone test pass (browser mode in Chrome / Safari, Moonshine with accents and radio noise)
 - [ ] ⛔ D8 Online engine: voice gateway in `packages/server` + GPU inference (faster-whisper + Kokoro), Groq fallback
 - [ ] Per-user online-voice quotas + budget alarms + fallback to embedded/text
 - [ ] ASR benchmark set (real voices) + WER report on callsigns/numbers

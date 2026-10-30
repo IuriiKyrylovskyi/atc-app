@@ -1,7 +1,7 @@
 {
   "extends": "../sim/tsconfig.json",
   "compilerOptions": {
-    // TTS adapters (src/tts) use Web Speech and Web Audio.
+    // Speech adapters (src/tts, src/stt) use Web Speech, Web Audio and getUserMedia.
     "lib": ["ES2022", "DOM"]
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]

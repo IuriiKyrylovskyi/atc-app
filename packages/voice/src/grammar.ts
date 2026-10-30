@@ -328,12 +328,14 @@ export function lexWords(words: readonly string[]): IToken[] {
 /**
  * Words that may belong to a callsign: anything up to the first keyword.
  * "flight" counts as a callsign word unless "level" follows ("Frontier Flight 12").
+ * "to" only follows a keyword ("descend to"), so before one it is a misheard
+ * syllable of the operator name ("Dell to 1192" for "Delta 1192").
  */
 export function callsignLength(tokens: readonly IToken[]): number {
   let n = 0;
   while (n < tokens.length) {
     const t = tokens[n]!.tokenType;
-    if (t === Flight && tokens[n + 1]?.tokenType !== Level) {
+    if ((t === Flight && tokens[n + 1]?.tokenType !== Level) || (t === To && n > 0)) {
       n++;
       continue;
     }
