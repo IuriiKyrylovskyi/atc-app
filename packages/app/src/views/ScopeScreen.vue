@@ -233,7 +233,11 @@ function pttDown(): void {
 
 async function pttUp(): Promise<void> {
   const t = await controllerMic.release();
-  if (!t) return;
+  if (!t) {
+    // Blocked microphone, recogniser down: say so where the controller looks.
+    if (micStatus.value?.error) commandError.value = micStatus.value.error;
+    return;
+  }
   // Grammar re-scoring: the first alternative the phraseology parser understands.
   commandText.value = pickTranscript(t, (text) => interpret(text, commandContext()).ok);
   commandError.value = null;

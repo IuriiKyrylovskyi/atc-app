@@ -48,6 +48,17 @@ export function availableMicModes(): MicMode[] {
   return modes;
 }
 
+/** What went wrong, for the command line's error line. */
+function micError(err: unknown): string {
+  const name = err instanceof Error ? err.name : '';
+  const text = err instanceof Error ? err.message : String(err);
+  if (name === 'NotAllowedError' || /not-allowed/.test(text))
+    return 'Microphone blocked: allow it for this site in the browser settings';
+  if (name === 'NotFoundError' || /audio-capture/.test(text)) return 'No microphone found';
+  if (/network/.test(text)) return 'Browser speech recognition is offline: try MIC MOONSHINE';
+  return text;
+}
+
 export class ControllerMic {
   private browser: WebSpeechRecognizer | null = null;
   private moonshine: PcmRecognizer | null = null;
@@ -94,9 +105,7 @@ export class ControllerMic {
     this.update({ state: 'listening', error: null });
     this.active.start();
     if (this.active === this.moonshine)
-      this.mic
-        ?.open()
-        .catch((err: unknown) => this.update({ error: `Microphone: ${String(err)}` }));
+      this.mic?.open().catch((err: unknown) => this.update({ error: micError(err) }));
     return true;
   }
 
@@ -108,7 +117,7 @@ export class ControllerMic {
     try {
       return await engine.stop();
     } catch (err) {
-      this.update({ error: err instanceof Error ? err.message : String(err) });
+      this.update({ error: micError(err) });
       return null;
     } finally {
       this.update({ state: 'idle' });

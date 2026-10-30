@@ -153,7 +153,8 @@ the defaults below; the open items are only about paid upgrades or permissions.
 - [ ] Context biasing (live callsigns, fixes, runways, frequencies) — today only after the fact: fuzzy callsign / fix matching
 - [x] Grammar re-scoring of n-best results (`pickTranscript`: first alternative the parser understands)
 - [x] Speech-engine output in the parser: group number words ("eleven ninety two", "two hundred fifty"), glued / misheard runway sides ("4Ride"), misheard operator names before a clear flight number ("Dell to 1192" → DAL1192, by sound)
-- [ ] Real-microphone test pass (browser mode in Chrome / Safari, Moonshine with accents and radio noise)
+- [x] Real-microphone test in Chrome: spoken commands understood and read back
+- [ ] Real-microphone test in Safari; Moonshine with accents and radio noise
 - [ ] ⛔ D8 Online engine: voice gateway in `packages/server` + GPU inference (faster-whisper + Kokoro), Groq fallback
 - [ ] Per-user online-voice quotas + budget alarms + fallback to embedded/text
 - [ ] ASR benchmark set (real voices) + WER report on callsigns/numbers
